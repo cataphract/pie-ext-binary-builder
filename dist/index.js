@@ -30215,18 +30215,21 @@ const path = __nccwpck_require__(6928);
 async function determineExtensionNameFromComposerJson() {
     core.info("Detecting extension name from composer.json...");
 
-    if (!fs.existsSync("composer.json")) {
+    const buildPath = core.getInput("build-path") || ".";
+    const composerJson = path.join(buildPath, "composer.json");
+
+    if (!fs.existsSync(composerJson)) {
         throw new Error("composer.json not found. This does not appear to be a PIE package.");
     }
 
-    const type = (await exec.getExecOutput("jq", ["-r", ".type", "composer.json"], {
+    const type = (await exec.getExecOutput("jq", ["-r", ".type", composerJson], {
         ignoreReturnCode: true
     })).stdout.trim();
     if (type !== "php-ext" && type !== "php-ext-zend") {
         throw new Error(`composer.json type must be "php-ext" or "php-ext-zend", but "${type}" was found.`);
     }
 
-    let extName = (await exec.getExecOutput("jq", ["-r", '."php-ext"."extension-name"', "composer.json"], {
+    let extName = (await exec.getExecOutput("jq", ["-r", '."php-ext"."extension-name"', composerJson], {
         ignoreReturnCode: true
     })).stdout.trim();
 
@@ -30234,7 +30237,7 @@ async function determineExtensionNameFromComposerJson() {
     // https://github.com/php/pie/blob/f9cb8d3034697dc5b4054614a25b0860c861e496/src/ExtensionName.php#L58
     if (extName === "null" || extName === "") {
         core.info(".php-ext.extension-name not found in composer.json, falling back to package name...");
-        const packageName = (await exec.getExecOutput("jq", ["-r", ".name", "composer.json"], {
+        const packageName = (await exec.getExecOutput("jq", ["-r", ".name", composerJson], {
             ignoreReturnCode: true
         })).stdout.trim();
 
@@ -30258,15 +30261,86 @@ async function determineExtensionNameFromComposerJson() {
     return extName;
 }
 
-async function buildExtension() {
-    core.info("Building the extension...");
+async function buildExtensionInDocker(dockerImage, configureFlags, buildPath) {
+    core.info(`Building the extension inside Docker using ${dockerImage}...`);
+
+    const containerPackages = core.getInput("container-packages");
+    const workDir = buildPath !== '.' ? `/ext/${buildPath}` : '/ext';
+    const flags = configureFlags.filter(f => f);
+    const configPart = flags.length > 0 ? `./configure ${flags.join(' ')}` : './configure';
+    const apkPart = containerPackages ? `apk add --no-cache ${containerPackages} && ` : '';
+    const buildCmd = `${apkPart}phpize && ${configPart} && make`;
+
+    await exec.exec('docker', [
+        'run', '--rm',
+        '-v', `${process.cwd()}:/ext`,
+        '-w', workDir,
+        dockerImage,
+        'sh', '-c', buildCmd,
+    ]);
+}
+
+async function execMaybeDocker(cmd, buildArgs = [], opts = {}) {
+    const dockerImage = core.getInput("docker-image");
+    const mapPath = dockerImage ? relPath => path.join('/ext', relPath) : relPath => relPath;
+    const args = typeof buildArgs === 'function' ? buildArgs(mapPath) : buildArgs;
+
+    if (!dockerImage) {
+        await exec.exec(cmd, args, opts);
+        return;
+    }
+    const workDir = opts.cwd ? path.join('/ext', opts.cwd) : '/ext';
+    await exec.exec('docker', [
+        'run', '--rm',
+        '-v', `${process.cwd()}:/ext`,
+        '-w', workDir,
+        dockerImage,
+        cmd, ...args,
+    ]);
+}
+
+async function getExecOutputMaybeDocker(cmd, buildArgs = [], opts = {}) {
+    const dockerImage = core.getInput("docker-image");
+    const mapPath = dockerImage ? relPath => path.join('/ext', relPath) : relPath => relPath;
+    const args = typeof buildArgs === 'function' ? buildArgs(mapPath) : buildArgs;
+
+    if (!dockerImage) {
+        return await exec.getExecOutput(cmd, args, opts);
+    }
+    const workDir = opts.cwd ? path.join('/ext', opts.cwd) : '/ext';
+    return await exec.getExecOutput('docker', [
+        'run', '--rm',
+        '-v', `${process.cwd()}:/ext`,
+        '-w', workDir,
+        dockerImage,
+        cmd, ...args,
+    ]);
+}
+
+async function buildExtension({ extSoFile } = {}) {
+    const libcTarget = core.getInput("libc-target");
+    const dockerImage = core.getInput("docker-image");
     const configureFlags = core.getInput("configure-flags").split(' ');
     const buildPath = core.getInput("build-path") || ".";
-    const opts = buildPath !== "." ? { cwd: buildPath } : {};
 
-    await exec.exec("phpize", [], opts);
-    await exec.exec("./configure", configureFlags, opts);
-    await exec.exec("make", [], opts);
+    if (dockerImage) {
+        await module.exports.buildExtensionInDocker(dockerImage, configureFlags, buildPath);
+    } else {
+        core.info("Building the extension...");
+        const opts = buildPath !== "." ? { cwd: buildPath } : {};
+        await exec.exec("phpize", [], opts);
+        await exec.exec("./configure", configureFlags, opts);
+        await exec.exec("make", [], opts);
+    }
+
+    if (libcTarget === 'anylibc') {
+        const muslArchMap = { 'x64': 'x86_64', 'arm64': 'aarch64' };
+        const muslArch = muslArchMap[process.arch] || process.arch;
+        const muslLib = `libc.musl-${muslArch}.so.1`;
+        const soRelPath = buildPath !== '.' ? path.join(buildPath, 'modules', extSoFile) : path.join('modules', extSoFile);
+        await module.exports.execMaybeDocker('patchelf',
+            mapPath => ['--remove-needed', muslLib, mapPath(soRelPath)]);
+    }
 }
 
 async function determinePhpVersionFromPhpConfig() {
@@ -30309,6 +30383,12 @@ async function determineOperatingSystem() {
 
 async function determineLibcFlavour() {
     core.info("Detecting libc flavour...");
+
+    const libcTarget = core.getInput("libc-target");
+    if (libcTarget === 'anylibc') {
+        return "anylibc";
+    }
+
     if (process.platform === "darwin") {
         return "bsdlibc";
     }
@@ -30385,7 +30465,7 @@ async function uploadReleaseAsset(releaseTag, packageFilename) {
     core.info("Asset uploaded successfully!");
 }
 
-async function extensionDetails() {
+async function extensionDetails(dockerImage) {
     const releaseTag = core.getInput("release-tag");
     const phpBinary = await module.exports.determinePhpBinary();
     const extName = await module.exports.determineExtensionNameFromComposerJson();
@@ -30406,7 +30486,7 @@ async function extensionDetails() {
 async function main() {
     const { releaseTag, extSoFile, extPackageName } = await module.exports.extensionDetails();
 
-    await module.exports.buildExtension();
+    await module.exports.buildExtension({ extSoFile });
 
     const buildPath = core.getInput("build-path") || ".";
     const modulesDir = path.join(buildPath, "modules");
@@ -30421,6 +30501,7 @@ async function main() {
 
 module.exports = {
     determineExtensionNameFromComposerJson,
+    buildExtensionInDocker,
     buildExtension,
     determinePhpVersionFromPhpConfig,
     determineArchitecture,
