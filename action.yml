@@ -15,6 +15,32 @@ inputs:
   github-token:
     description: 'The GitHub token to use for uploading assets'
     required: true
+  libc-target:
+    description: >
+      Target libc for the build. "host" (default) uses whatever libc is on the
+      runner (or the docker image). On Linux, "anylibc" can also be specified to
+      indicate that the resulting binary is compatible with both glibc and musl.
+    required: false
+    default: 'host'
+  docker-image:
+    description: >
+      The docker image used to build anylibc images.
+      For instance, ghcr.io/cataphract/php-minimal:8.4-debug
+    required: false
+  container-packages:
+    description: >
+      Space-separated list of Alpine packages to install (via apk) inside the
+      container before building. Only used when docker-image is set.
+    required: false
+    default: ''
+  container-pre-build-script:
+    description: >
+      Path (relative to the repository root) of a shell script to run inside
+      the container after packages are installed but before phpize/configure/make.
+      Useful for manipulating the build environment, e.g. removing unwanted
+      dynamic libraries to force static linking. Only used when docker-image is set.
+    required: false
+    default: ''
 outputs:
   package-path:
     description: 'Path to the generated .zip package'
