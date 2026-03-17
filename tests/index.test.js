@@ -259,6 +259,7 @@ describe('determineLibcFlavour', () => {
 
     beforeEach(() => {
         exec.getExecOutput.mockReset();
+        core.getInput.mockReset();
     });
 
     afterEach(() => {
@@ -266,6 +267,12 @@ describe('determineLibcFlavour', () => {
             value: originalPlatform,
             configurable: true
         });
+    });
+
+    test('anylibc libc-target returns anylibc without probing runner', async () => {
+        core.getInput.mockReturnValue('anylibc');
+        await expect(action.determineLibcFlavour()).resolves.toBe('anylibc');
+        expect(exec.getExecOutput).not.toHaveBeenCalled();
     });
 
     test('osx uses bsdlibc', async () => {
