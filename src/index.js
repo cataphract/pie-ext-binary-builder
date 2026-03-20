@@ -14,26 +14,22 @@ async function determineExtensionNameFromComposerJson() {
         throw new Error("composer.json not found. This does not appear to be a PIE package.");
     }
 
-    const type = (await exec.getExecOutput("jq", ["-r", ".type", composerJson], {
-        ignoreReturnCode: true
-    })).stdout.trim();
+    const composer = JSON.parse(fs.readFileSync(composerJson, "utf8"));
+
+    const type = composer.type || "";
     if (type !== "php-ext" && type !== "php-ext-zend") {
         throw new Error(`composer.json type must be "php-ext" or "php-ext-zend", but "${type}" was found.`);
     }
 
-    let extName = (await exec.getExecOutput("jq", ["-r", '."php-ext"."extension-name"', composerJson], {
-        ignoreReturnCode: true
-    })).stdout.trim();
+    let extName = composer["php-ext"]?.["extension-name"] || "";
 
     // If extension-name is not defined, fall back according to package name (without vendor prefix)
     // https://github.com/php/pie/blob/f9cb8d3034697dc5b4054614a25b0860c861e496/src/ExtensionName.php#L58
-    if (extName === "null" || extName === "") {
+    if (!extName) {
         core.info(".php-ext.extension-name not found in composer.json, falling back to package name...");
-        const packageName = (await exec.getExecOutput("jq", ["-r", ".name", composerJson], {
-            ignoreReturnCode: true
-        })).stdout.trim();
+        const packageName = composer.name || "";
 
-        if (packageName === "null" || packageName === "") {
+        if (!packageName) {
             throw new Error("Could not determine extension name: both .\"php-ext\".\"extension-name\" and .name are missing in composer.json");
         }
 

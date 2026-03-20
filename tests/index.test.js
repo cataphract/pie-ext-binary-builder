@@ -42,12 +42,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has type other than php-ext or php-ext-zend', async () => {
         fs.existsSync.mockReturnValue(true);
-
-        // jq -r ".type" composer.json
-        exec.getExecOutput.mockResolvedValue({
-            stdout: "library\n",
-            exitCode: 0,
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'library', name: 'foo/bar' }));
 
         await expect(action.determineExtensionNameFromComposerJson())
             .rejects
@@ -56,19 +51,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has valid php-ext.extension-name with ext- prefix defined', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "ext-test_ext\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', 'php-ext': { 'extension-name': 'ext-test_ext' } }));
 
         expect(await action.determineExtensionNameFromComposerJson())
             .toBe('test_ext');
@@ -76,19 +59,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has valid php-ext.extension-name defined', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "test_ext\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', 'php-ext': { 'extension-name': 'test_ext' } }));
 
         expect(await action.determineExtensionNameFromComposerJson())
             .toBe('test_ext');
@@ -96,19 +67,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has invalid php-ext.extension-name defined', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "invalid-ext-name\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', 'php-ext': { 'extension-name': 'invalid-ext-name' } }));
 
         await expect(action.determineExtensionNameFromComposerJson())
             .rejects
@@ -117,24 +76,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has no php-ext.extension-name defined, but package name is valid', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "\n", exitCode: 0 });
-            }
-
-            // jq -r '.name' composer.json
-            if (args.includes('.name')) {
-                return Promise.resolve({ stdout: "foo/bar\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', name: 'foo/bar' }));
 
         expect(await action.determineExtensionNameFromComposerJson())
             .toBe('bar');
@@ -142,24 +84,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has no php-ext.extension-name or package name defined', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "\n", exitCode: 0 });
-            }
-
-            // jq -r '.name' composer.json
-            if (args.includes('.name')) {
-                return Promise.resolve({ stdout: "\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext' }));
 
         await expect(action.determineExtensionNameFromComposerJson())
             .rejects
@@ -168,24 +93,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has no php-ext.extension-name defined, and package name is invalid', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "\n", exitCode: 0 });
-            }
-
-            // jq -r '.name' composer.json
-            if (args.includes('.name')) {
-                return Promise.resolve({ stdout: "foo/invalid-ext-name\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', name: 'foo/invalid-ext-name' }));
 
         await expect(action.determineExtensionNameFromComposerJson())
             .rejects
