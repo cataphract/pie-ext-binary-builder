@@ -172,7 +172,7 @@ jobs:
             sh -c "${INSTALL}${PRE_BUILD}phpize && ./configure && make"
 
       - name: Strip musl dependency from .so
-        run: patchelf --remove-needed "libc.musl-$(uname -m).so.1" "${{ github.workspace }}/ext/modules/${{ matrix.ext-name }}.so"
+        run: sudo patchelf --remove-needed "libc.musl-$(uname -m).so.1" "${{ github.workspace }}/ext/modules/${{ matrix.ext-name }}.so"
 
       - name: Test in musl container
         run: |
