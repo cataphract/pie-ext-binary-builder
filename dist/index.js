@@ -30212,10 +30212,6 @@ const github = __nccwpck_require__(3228);
 const fs = __nccwpck_require__(9896);
 const path = __nccwpck_require__(6928);
 
-function shellEscape(str) {
-    return "'" + str.replace(/'/g, "'\\''") + "'";
-}
-
 async function determineExtensionNameFromComposerJson() {
     core.info("Detecting extension name from composer.json...");
 
@@ -30265,94 +30261,29 @@ async function determineExtensionNameFromComposerJson() {
     return extName;
 }
 
-async function buildExtensionInDocker(dockerImage, configureFlags, buildPath) {
-    core.info(`Building the extension inside Docker using ${dockerImage}...`);
-
-    const containerPackages = core.getInput("container-packages");
-    const workDir = buildPath !== '.' ? `/workspace/${buildPath}` : '/workspace';
-    const flags = configureFlags.filter(f => f);
-    const configPart = flags.length > 0 ? `./configure ${flags.map(shellEscape).join(' ')}` : './configure';
-    const packages = containerPackages ? containerPackages.split(/\s+/).filter(Boolean) : [];
-    const apkPart = packages.length > 0 ? `apk add --no-cache ${packages.map(shellEscape).join(' ')} && ` : '';
-    const preScript = core.getInput("container-pre-build-script");
-    const preScriptPart = preScript ? `sh /workspace/${preScript} && ` : '';
-    const buildCmd = `${apkPart}${preScriptPart}phpize && ${configPart} && make -j$(nproc)`;
-
-    await exec.exec('docker', [
-        'run', '--rm',
-        '-v', `${process.cwd()}:/workspace`,
-        '-w', workDir,
-        dockerImage,
-        'sh', '-c', buildCmd,
-    ]);
-}
-
-async function execMaybeDocker(cmd, buildArgs = [], opts = {}) {
-    const dockerImage = core.getInput("docker-image");
-    const mapPath = dockerImage ? relPath => path.join('/workspace', relPath) : relPath => relPath;
-    const args = typeof buildArgs === 'function' ? buildArgs(mapPath) : buildArgs;
-
-    if (!dockerImage) {
-        await exec.exec(cmd, args, opts);
-        return;
-    }
-    const workDir = opts.cwd ? path.join('/workspace', opts.cwd) : '/workspace';
-    await exec.exec('docker', [
-        'run', '--rm',
-        '-v', `${process.cwd()}:/workspace`,
-        '-w', workDir,
-        dockerImage,
-        cmd, ...args,
-    ]);
-}
-
-async function getExecOutputMaybeDocker(cmd, buildArgs = [], opts = {}) {
-    const dockerImage = core.getInput("docker-image");
-    const mapPath = dockerImage ? relPath => path.join('/workspace', relPath) : relPath => relPath;
-    const args = typeof buildArgs === 'function' ? buildArgs(mapPath) : buildArgs;
-
-    if (!dockerImage) {
-        return await exec.getExecOutput(cmd, args, opts);
-    }
-    const workDir = opts.cwd ? path.join('/workspace', opts.cwd) : '/workspace';
-    return await exec.getExecOutput('docker', [
-        'run', '--rm',
-        '-v', `${process.cwd()}:/workspace`,
-        '-w', workDir,
-        dockerImage,
-        cmd, ...args,
-    ]);
-}
-
 async function buildExtension({ extSoFile } = {}) {
     const libcTarget = core.getInput("libc-target");
-    const dockerImage = core.getInput("docker-image");
     const configureFlags = core.getInput("configure-flags").split(' ');
     const buildPath = core.getInput("build-path") || ".";
 
-    if (dockerImage) {
-        await module.exports.buildExtensionInDocker(dockerImage, configureFlags, buildPath);
-    } else {
-        core.info("Building the extension...");
-        const opts = buildPath !== "." ? { cwd: buildPath } : {};
-        await exec.exec("phpize", [], opts);
-        await exec.exec("./configure", configureFlags, opts);
-        await exec.exec("make", [], opts);
-    }
+    core.info("Building the extension...");
+    const opts = buildPath !== "." ? { cwd: buildPath } : {};
+    await exec.exec("phpize", [], opts);
+    await exec.exec("./configure", configureFlags, opts);
+    await exec.exec("make", [], opts);
 
     if (libcTarget === 'anylibc') {
         const muslArchMap = { 'x64': 'x86_64', 'arm64': 'aarch64' };
         const muslArch = muslArchMap[process.arch] || process.arch;
         const muslLib = `libc.musl-${muslArch}.so.1`;
         const soRelPath = buildPath !== '.' ? path.join(buildPath, 'modules', extSoFile) : path.join('modules', extSoFile);
-        await module.exports.execMaybeDocker('patchelf',
-            mapPath => ['--remove-needed', muslLib, mapPath(soRelPath)]);
+        await exec.exec('patchelf', ['--remove-needed', muslLib, soRelPath]);
     }
 }
 
 async function determinePhpVersionFromPhpConfig() {
     core.info("Detecting php version...");
-    return (await getExecOutputMaybeDocker("php-config", ["--version"]))
+    return (await exec.getExecOutput("php-config", ["--version"]))
             .stdout
             .trim()
             .split('.')
@@ -30400,7 +30331,7 @@ async function determineLibcFlavour() {
         return "bsdlibc";
     }
 
-    const lddOutput = (await getExecOutputMaybeDocker("ldd", ["--version"], { ignoreReturnCode: true })).stdout;
+    const lddOutput = (await exec.getExecOutput("ldd", ["--version"], { ignoreReturnCode: true })).stdout;
     if (lddOutput.includes("musl")) {
         return "musl";
     }
@@ -30410,7 +30341,7 @@ async function determineLibcFlavour() {
 
 async function determinePhpBinary() {
     core.info("Locating PHP binary...");
-    const phpBinary = (await getExecOutputMaybeDocker("php-config", ["--php-binary"]))
+    const phpBinary = (await exec.getExecOutput("php-config", ["--php-binary"]))
         .stdout
         .trim();
 
@@ -30424,7 +30355,7 @@ async function determinePhpBinary() {
 
 async function determinePhpDebugMode(phpBinary) {
     core.info("Detecting Zend debug mode...");
-    return (await getExecOutputMaybeDocker(
+    return (await exec.getExecOutput(
             phpBinary,
             ["-n", "-r", "echo PHP_DEBUG ? '-debug' : '';"],
         ))
@@ -30434,7 +30365,7 @@ async function determinePhpDebugMode(phpBinary) {
 
 async function determineZendThreadSafeMode(phpBinary) {
     core.info("Detecting Zend thread safety mode...");
-    return (await getExecOutputMaybeDocker(
+    return (await exec.getExecOutput(
             phpBinary,
             ["-n", "-r", "echo ZEND_THREAD_SAFE ? '-zts' : '';"],
         ))
@@ -30472,7 +30403,7 @@ async function uploadReleaseAsset(releaseTag, packageFilename) {
     core.info("Asset uploaded successfully!");
 }
 
-async function extensionDetails(dockerImage) {
+async function extensionDetails() {
     const releaseTag = core.getInput("release-tag");
     const phpBinary = await module.exports.determinePhpBinary();
     const extName = await module.exports.determineExtensionNameFromComposerJson();
@@ -30508,9 +30439,6 @@ async function main() {
 
 module.exports = {
     determineExtensionNameFromComposerJson,
-    buildExtensionInDocker,
-    execMaybeDocker,
-    getExecOutputMaybeDocker,
     buildExtension,
     determinePhpVersionFromPhpConfig,
     determineArchitecture,

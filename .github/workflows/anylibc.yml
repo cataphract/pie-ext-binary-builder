@@ -31,9 +31,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  test-extension:
+  build-and-test-musl:
     name: ${{ matrix.ext-name }} / ${{ matrix.variant }}
     runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
     needs: [create-test-release]
     permissions:
       contents: write
@@ -158,6 +159,13 @@ jobs:
             phpts: ts
 
     steps:
+      - name: Install gcompat and git for GitHub Actions runner
+        run: apk add --no-cache gcompat git
+
+      - name: Install Alpine packages
+        if: matrix.container-packages != ''
+        run: apk add --no-cache ${{ matrix.container-packages }}
+
       - name: Checkout pie-ext-binary-builder (the action)
         uses: actions/checkout@v6
 
@@ -167,6 +175,147 @@ jobs:
           repository: ${{ matrix.repository }}
           ref: ${{ matrix.ref }}
           path: ext
+
+      - name: Run container pre-build script
+        if: matrix.container-pre-build-script != ''
+        run: sh ${{ matrix.container-pre-build-script }}
+
+      - name: Build extension via action
+        uses: ./
+        with:
+          release-tag: ${{ env.RELEASE_TAG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          build-path: ext
+          libc-target: anylibc
+
+      - name: Upload .so artifact for glibc test
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.ext-name }}-${{ matrix.variant }}-so
+          path: ext/modules/${{ matrix.ext-name }}.so
+
+      - name: Test in musl container
+        working-directory: ext
+        run: |
+          php ${{ matrix.test-runner || 'run-tests.php' }} \
+            -n -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=$(realpath modules/${{ matrix.ext-name }}.so) \
+            --show-diff -q tests/
+
+  test-glibc:
+    name: ${{ matrix.ext-name }} / ${{ matrix.variant }} (glibc)
+    runs-on: ubuntu-latest
+    needs: [build-and-test-musl]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ext-name: rar
+            repository: cataphract/php-rar
+            ref: v4.3.1
+            host-apt-packages: ''
+            variant: 8.0-release
+            php-version: '8.0'
+            debug: 'false'
+            phpts: nts
+            test-runner: run-tests-rar.php
+
+          - ext-name: rar
+            repository: cataphract/php-rar
+            ref: v4.3.1
+            host-apt-packages: ''
+            variant: 8.5-release-zts
+            php-version: '8.5'
+            debug: 'false'
+            phpts: ts
+            test-runner: run-tests-rar.php
+
+          - ext-name: apcu
+            repository: krakjoe/apcu
+            ref: v5.1.28
+            host-apt-packages: ''
+            variant: 8.0-release
+            php-version: '8.0'
+            debug: 'false'
+            phpts: nts
+
+          - ext-name: apcu
+            repository: krakjoe/apcu
+            ref: v5.1.28
+            host-apt-packages: ''
+            variant: 8.5-release-zts
+            php-version: '8.5'
+            debug: 'false'
+            phpts: ts
+
+          - ext-name: inotify
+            repository: arnaud-lb/php-inotify
+            ref: 3.0.1
+            host-apt-packages: ''
+            variant: 8.0-release
+            php-version: '8.0'
+            debug: 'false'
+            phpts: nts
+
+          - ext-name: inotify
+            repository: arnaud-lb/php-inotify
+            ref: 3.0.1
+            host-apt-packages: ''
+            variant: 8.5-release-zts
+            php-version: '8.5'
+            debug: 'false'
+            phpts: ts
+
+          - ext-name: imagick
+            repository: Imagick/imagick
+            ref: 3.8.1
+            host-apt-packages: ghostscript gsfonts
+            host-pre-test-script: sudo ln -s /etc/ImageMagick-6/ /etc/ImageMagick-7
+            variant: 8.0-release
+            php-version: '8.0'
+            debug: 'false'
+            phpts: nts
+
+          - ext-name: imagick
+            repository: Imagick/imagick
+            ref: 3.8.1
+            host-apt-packages: ghostscript gsfonts
+            host-pre-test-script: sudo ln -s /etc/ImageMagick-6/ /etc/ImageMagick-7
+            variant: 8.5-release-zts
+            php-version: '8.5'
+            debug: 'false'
+            phpts: ts
+
+          - ext-name: igbinary
+            repository: igbinary/igbinary
+            ref: 3.2.17RC1
+            host-apt-packages: ''
+            variant: 8.0-release
+            php-version: '8.0'
+            debug: 'false'
+            phpts: nts
+
+          - ext-name: igbinary
+            repository: igbinary/igbinary
+            ref: 3.2.17RC1
+            host-apt-packages: ''
+            variant: 8.5-release-zts
+            php-version: '8.5'
+            debug: 'false'
+            phpts: ts
+
+    steps:
+      - name: Checkout ${{ matrix.ext-name }}
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.ref }}
+          path: ext
+
+      - name: Download .so artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.ext-name }}-${{ matrix.variant }}-so
+          path: ext/modules/
 
       - name: Install host APT packages
         if: matrix.host-apt-packages != ''
@@ -181,42 +330,19 @@ jobs:
           debug: ${{ matrix.debug }}
           phpts: ${{ matrix.phpts }}
 
-      - name: Build extension via action
-        uses: ./
-        with:
-          release-tag: ${{ env.RELEASE_TAG }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          build-path: ext
-          libc-target: anylibc
-          docker-image: ${{ matrix.image }}
-          container-packages: ${{ matrix.container-packages }}
-          container-pre-build-script: ${{ matrix.container-pre-build-script }}
-
-      - name: Test inside musl container (against pre-built binary)
-        run: |
-          PKGS="${{ matrix.container-packages }}"
-          INSTALL="${PKGS:+apk add --no-cache ${PKGS} && }"
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/ext \
-            "${{ matrix.image }}" \
-            sh -c "${INSTALL}php ${{ matrix.test-runner || 'run-tests.php' }} \
-              -n -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=/workspace/ext/modules/${{ matrix.ext-name }}.so \
-              --show-diff -q tests/"
-
       - name: Run pre-test host script
         if: matrix.host-pre-test-script != ''
         run: ${{ matrix.host-pre-test-script }}
 
-      - name: Test outside container (glibc)
+      - name: Test on glibc
+        working-directory: ext
         run: |
-          cd ${{ github.workspace }}/ext
           php ${{ matrix.test-runner || 'run-tests.php' }} -n -q --show-diff \
             -d "${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=$(realpath modules/${{ matrix.ext-name }}.so)" -n tests
 
   delete-test-release:
     runs-on: ubuntu-latest
-    needs: [test-extension]
+    needs: [test-glibc]
     if: always()
     steps:
       - name: Checkout

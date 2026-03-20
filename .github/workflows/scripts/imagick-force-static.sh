@@ -167,7 +167,7 @@ WRAPPER_EOF
 chmod +x "$MUSL_CLANG"
 
 # These tests fail
-rm -v /workspace/ext/tests/024-ispixelsimilar.phpt \
-  /workspace/ext/tests/243_Tutorial_svgExample_basic.phpt
+rm -v "${GITHUB_WORKSPACE}/ext/tests/024-ispixelsimilar.phpt" \
+  "${GITHUB_WORKSPACE}/ext/tests/243_Tutorial_svgExample_basic.phpt"
 
 echo "==> Done."
