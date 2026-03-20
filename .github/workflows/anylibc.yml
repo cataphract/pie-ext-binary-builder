@@ -159,8 +159,8 @@ jobs:
             phpts: ts
 
     steps:
-      - name: Install gcompat and git for GitHub Actions runner
-        run: apk add --no-cache gcompat git
+      - name: Install gcompat, git and zip for GitHub Actions runner
+        run: apk add --no-cache gcompat git zip
 
       - name: Install Alpine packages
         if: matrix.container-packages != ''
