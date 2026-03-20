@@ -329,6 +329,7 @@ describe('uploadReleaseAsset', () => {
     });
 
     test('throws error when there are no releases', async () => {
+        action._retryDelay = 0;
         octokit.rest.repos.listReleases.mockResolvedValue({data: []});
 
         await expect(action.uploadReleaseAsset('1.0.0', 'release-asset.zip'))
@@ -337,6 +338,7 @@ describe('uploadReleaseAsset', () => {
     });
 
     test('throws error when release not found', async () => {
+        action._retryDelay = 0;
         octokit.rest.repos.listReleases.mockResolvedValue({
             data: [
                 {

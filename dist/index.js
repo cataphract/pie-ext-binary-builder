@@ -30377,12 +30377,18 @@ async function uploadReleaseAsset(releaseTag, packageFilename) {
     const { owner, repo } = github.context.repo;
 
     core.info(`Searching for release with tag: ${releaseTag} (including drafts)...`);
-    const { data: releases } = await octokit.rest.repos.listReleases({
-        owner,
-        repo,
-    });
 
-    const release = releases.find(r => r.tag_name === releaseTag);
+    let release = null;
+    for (let attempt = 1; attempt <= 10; attempt++) {
+        const { data: releases } = await octokit.rest.repos.listReleases({ owner, repo });
+        release = releases.find(r => r.tag_name === releaseTag);
+        if (release) break;
+        if (attempt < 10) {
+            const delay = module.exports._retryDelay;
+            core.info(`Release not found yet (attempt ${attempt}/10), retrying in ${delay / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
     if (!release) {
         throw new Error(`No release found for tag: ${releaseTag}`);
     }
@@ -30434,6 +30440,7 @@ async function main() {
 }
 
 module.exports = {
+    _retryDelay: 15000,
     determineExtensionNameFromComposerJson,
     buildExtension,
     determinePhpVersionFromPhpConfig,
