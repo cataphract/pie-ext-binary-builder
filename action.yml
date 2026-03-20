@@ -17,10 +17,6 @@ inputs:
     description: 'The GitHub token to use for uploading assets'
     required: false
     default: ''
-  skip-build:
-    description: 'If true, skip phpize/configure/make and only run patchelf (when libc-target is anylibc) and upload.'
-    required: false
-    default: 'false'
   libc-target:
     description: >
       Target libc for the build. "host" (default) uses whatever libc is on the
