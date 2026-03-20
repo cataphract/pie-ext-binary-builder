@@ -61,11 +61,24 @@ async function buildExtension({ extSoFile } = {}) {
     await exec.exec("make", [], opts);
 
     if (libcTarget === 'anylibc') {
+        const soRelPath = buildPath !== '.' ? path.join(buildPath, 'modules', extSoFile) : path.join('modules', extSoFile);
+        const { stdout } = await exec.getExecOutput('patchelf', ['--print-needed', soRelPath]);
+        const needed = stdout.trim().split('\n').filter(Boolean);
+
+        // Remove musl libc dependency if present
         const muslArchMap = { 'x64': 'x86_64', 'arm64': 'aarch64' };
         const muslArch = muslArchMap[process.arch] || process.arch;
         const muslLib = `libc.musl-${muslArch}.so.1`;
-        const soRelPath = buildPath !== '.' ? path.join(buildPath, 'modules', extSoFile) : path.join('modules', extSoFile);
-        await exec.exec('patchelf', ['--remove-needed', muslLib, soRelPath]);
+        if (needed.includes(muslLib)) {
+            core.info(`Removing musl libc dependency: ${muslLib}`);
+            await exec.exec('patchelf', ['--remove-needed', muslLib, soRelPath]);
+        }
+
+        // Remove glibc libc dependency if present
+        if (needed.includes('libc.so.6')) {
+            core.info('Removing glibc libc dependency: libc.so.6');
+            await exec.exec('patchelf', ['--remove-needed', 'libc.so.6', soRelPath]);
+        }
     }
 }
 

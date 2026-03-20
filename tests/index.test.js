@@ -255,6 +255,10 @@ describe('determineZendThreadSafeMode', () => {
 });
 
 describe('buildExtension', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
     test('builds the extension with configure params and default build path', async () => {
         core.getInput.mockImplementation((name) => {
             if (name === 'configure-flags') return '--enable-test --with-foo=/foo/bar';
@@ -281,6 +285,67 @@ describe('buildExtension', () => {
         expect(exec.exec).toHaveBeenCalledWith('phpize', [], { cwd: 'some/ext/path' });
         expect(exec.exec).toHaveBeenCalledWith('./configure', ['--enable-test'], { cwd: 'some/ext/path' });
         expect(exec.exec).toHaveBeenCalledWith('make', [], { cwd: 'some/ext/path' });
+    });
+
+    test('anylibc: removes musl libc dep when present', async () => {
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return '.';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libc.musl-x86_64.so.1\nlibm.so\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'foo.so' });
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('patchelf', ['--print-needed', 'modules/foo.so']);
+        expect(exec.exec).toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.musl-x86_64.so.1', 'modules/foo.so']);
+        expect(exec.exec).not.toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.so.6', expect.anything()]);
+    });
+
+    test('anylibc: removes glibc libc dep when present', async () => {
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return '.';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libc.so.6\nlibm.so\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'foo.so' });
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('patchelf', ['--print-needed', 'modules/foo.so']);
+        expect(exec.exec).toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.so.6', 'modules/foo.so']);
+        expect(exec.exec).not.toHaveBeenCalledWith('patchelf', ['--remove-needed', expect.stringMatching(/musl/), expect.anything()]);
+    });
+
+    test('anylibc: does not call patchelf --remove-needed when no libc dep found', async () => {
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return '.';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libm.so\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'foo.so' });
+
+        expect(exec.exec).not.toHaveBeenCalledWith('patchelf', expect.arrayContaining(['--remove-needed']));
+    });
+
+    test('anylibc: patchelf uses custom build path', async () => {
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return 'ext';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libc.musl-x86_64.so.1\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'bar.so' });
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('patchelf', ['--print-needed', 'ext/modules/bar.so']);
+        expect(exec.exec).toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.musl-x86_64.so.1', 'ext/modules/bar.so']);
     });
 });
 
