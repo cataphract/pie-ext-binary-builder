@@ -42,7 +42,13 @@ pkg_srcdir() {
     eval "$(grep -E '^(pkgname|pkgver|builddir)=' APKBUILD | head -3)"
     # builddir may reference $srcdir (e.g. builddir="$srcdir/$pkgname-$pkgver")
     # expand it with srcdir set above, fall back to $srcdir/$pkgname-$pkgver
-    echo "${builddir:-${srcdir}/${pkgname}-${pkgver}}"
+    local computed="${builddir:-${srcdir}/${pkgname}-${pkgver}}"
+    if [ -d "$computed" ]; then
+        echo "$computed"
+    else
+        # Newer Alpine may unpack to a differently-named directory; find it
+        find "$srcdir" -maxdepth 1 -mindepth 1 -type d | head -1
+    fi
 }
 
 # zlib
