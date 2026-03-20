@@ -257,6 +257,7 @@ describe('determineZendThreadSafeMode', () => {
 describe('buildExtension', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        core.getBooleanInput.mockReturnValue(false);
     });
 
     test('builds the extension with configure params and default build path', async () => {
@@ -285,6 +286,24 @@ describe('buildExtension', () => {
         expect(exec.exec).toHaveBeenCalledWith('phpize', [], { cwd: 'some/ext/path' });
         expect(exec.exec).toHaveBeenCalledWith('./configure', ['--enable-test'], { cwd: 'some/ext/path' });
         expect(exec.exec).toHaveBeenCalledWith('make', [], { cwd: 'some/ext/path' });
+    });
+
+    test('skip-build: true skips phpize/configure/make but still runs patchelf', async () => {
+        core.getBooleanInput.mockReturnValue(true);
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return '.';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libc.musl-x86_64.so.1\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'foo.so' });
+
+        expect(exec.exec).not.toHaveBeenCalledWith('phpize', expect.anything(), expect.anything());
+        expect(exec.exec).not.toHaveBeenCalledWith('./configure', expect.anything(), expect.anything());
+        expect(exec.exec).not.toHaveBeenCalledWith('make', expect.anything(), expect.anything());
+        expect(exec.exec).toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.musl-x86_64.so.1', 'modules/foo.so']);
     });
 
     test('anylibc: removes musl libc dep when present', async () => {
@@ -463,6 +482,10 @@ describe('extensionDetails', () => {
 });
 
 describe('main', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
     test('main builds and uploads extension with default build path', async () => {
         jest.spyOn(action, 'extensionDetails').mockResolvedValue({
             releaseTag: '1.2.3',
@@ -507,5 +530,23 @@ describe('main', () => {
         expect(exec.exec).toHaveBeenCalledWith('ls', ['-l', 'src/php/ext/grpc/modules']);
         expect(exec.exec).toHaveBeenCalledWith('zip', ['-j', 'php_foo-1.2.3_php8.1-x86_64-linux-glibc-debug-zts.zip', 'src/php/ext/grpc/modules/foo.so']);
         expect(core.setOutput).toHaveBeenCalledWith('package-path', 'php_foo-1.2.3_php8.1-x86_64-linux-glibc-debug-zts.zip');
+    });
+
+    test('main skips zip and upload when no release-tag', async () => {
+        jest.spyOn(action, 'extensionDetails').mockResolvedValue({
+            releaseTag: '',
+            extSoFile: 'foo.so',
+            extPackageName: '',
+        });
+        jest.spyOn(action, 'buildExtension').mockResolvedValue();
+        jest.spyOn(action, 'uploadReleaseAsset').mockResolvedValue();
+        jest.spyOn(exec, 'exec').mockResolvedValue();
+
+        await action.main();
+
+        expect(action.buildExtension).toHaveBeenCalled();
+        expect(action.uploadReleaseAsset).not.toHaveBeenCalled();
+        expect(exec.exec).not.toHaveBeenCalledWith('zip', expect.anything());
+        expect(core.setOutput).not.toHaveBeenCalled();
     });
 });

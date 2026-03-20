@@ -171,8 +171,15 @@ jobs:
             "${{ matrix.image }}" \
             sh -c "${INSTALL}${PRE_BUILD}phpize && ./configure && make"
 
-      - name: Strip musl dependency from .so
-        run: sudo patchelf --remove-needed "libc.musl-$(uname -m).so.1" "${{ github.workspace }}/ext/modules/${{ matrix.ext-name }}.so"
+      - name: Fix .so ownership (built as root inside docker)
+        run: sudo chown "$USER" "${{ github.workspace }}/ext/modules/${{ matrix.ext-name }}.so"
+
+      - name: Strip libc dependency from .so
+        uses: ./
+        with:
+          build-path: ext
+          libc-target: anylibc
+          skip-build: 'true'
 
       - name: Test in musl container
         run: |

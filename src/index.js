@@ -51,14 +51,17 @@ async function determineExtensionNameFromComposerJson() {
 
 async function buildExtension({ extSoFile } = {}) {
     const libcTarget = core.getInput("libc-target");
+    const skipBuild = core.getBooleanInput("skip-build");
     const configureFlags = core.getInput("configure-flags").split(' ');
     const buildPath = core.getInput("build-path") || ".";
 
-    core.info("Building the extension...");
-    const opts = buildPath !== "." ? { cwd: buildPath } : {};
-    await exec.exec("phpize", [], opts);
-    await exec.exec("./configure", configureFlags, opts);
-    await exec.exec("make", [], opts);
+    if (!skipBuild) {
+        core.info("Building the extension...");
+        const opts = buildPath !== "." ? { cwd: buildPath } : {};
+        await exec.exec("phpize", [], opts);
+        await exec.exec("./configure", configureFlags, opts);
+        await exec.exec("make", [], opts);
+    }
 
     if (libcTarget === 'anylibc') {
         const soRelPath = buildPath !== '.' ? path.join(buildPath, 'modules', extSoFile) : path.join('modules', extSoFile);
@@ -232,6 +235,11 @@ async function main() {
     const { releaseTag, extSoFile, extPackageName } = await module.exports.extensionDetails();
 
     await module.exports.buildExtension({ extSoFile });
+
+    if (!releaseTag) {
+        core.info("No release-tag provided, skipping zip and upload.");
+        return;
+    }
 
     const buildPath = core.getInput("build-path") || ".";
     const modulesDir = path.join(buildPath, "modules");
