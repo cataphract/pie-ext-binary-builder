@@ -1,7 +1,5 @@
 #!/bin/sh
-# Build PCRE2 with -fPIC as a static lib and remove the shared lib symlink so
-# that extensions link PCRE2 statically, embedding it in the .so.  This avoids
-# a runtime dependency on the host's libpcre2-8.so.0 version.
+
 set -eu
 
 VER=$(apk info pcre2 2>/dev/null | head -1 | sed 's/pcre2-\([0-9.]*\).*/\1/')
@@ -21,8 +19,29 @@ cd "/tmp/pcre2-${VER}"
 make -j"$(nproc)"
 cp .libs/libpcre2-8.a /usr/lib/libpcre2-8.a
 
-# Remove the dynamic-link symlink so the linker falls back to the static lib.
-# The runtime .so.0 is kept intact for PHP itself.
-rm -f /usr/lib/libpcre2-8.so
-
 echo "==> PCRE2 ${VER} static lib installed."
+
+# musl-clang wrapper: force -Bstatic for delegate libs
+MUSL_CLANG=/usr/local/bin/musl-clang
+mv "$MUSL_CLANG" "${MUSL_CLANG}.orig"
+cat > "$MUSL_CLANG" << 'WRAPPER_EOF'
+#!/bin/sh
+shared=0
+for a; do case "$a" in -shared) shared=1 ;; esac; done
+[ "$shared" = "0" ] && exec "${0}.orig" "$@"
+
+args=
+for a; do
+    case "$a" in
+        -lpcre2-8)
+            args="$args -Wl,--push-state -Wl,-Bstatic $a -Wl,--pop-state" ;;
+        *) args="$args $a" ;;
+    esac
+done
+exec "${0}.orig" -v $args
+WRAPPER_EOF
+chmod +x "$MUSL_CLANG"
+
+echo "==> musl-clang wrapper installed."
+
+exec sh -i
