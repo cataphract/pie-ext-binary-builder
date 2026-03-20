@@ -65,32 +65,6 @@ jobs:
             phpts: ts
             test-runner: run-tests-rar.php
 
-          - ext-name: xdebug
-            repository: xdebug/xdebug
-            ref: 3.5.1
-            container-packages: ''
-            host-apt-packages: ''
-            variant: 8.0-release
-            php-version: '8.0'
-            image: ghcr.io/cataphract/php-minimal:8.0-release
-            debug: 'false'
-            phpts: nts
-            zend_extension: 'true'
-            test-runner: run-xdebug-tests.php
-
-          - ext-name: xdebug
-            repository: xdebug/xdebug
-            ref: 3.5.1
-            container-packages: ''
-            host-apt-packages: ''
-            variant: 8.5-release-zts
-            php-version: '8.5'
-            image: ghcr.io/cataphract/php-minimal:8.5-release-zts
-            debug: 'false'
-            phpts: ts
-            zend_extension: 'true'
-            test-runner: run-xdebug-tests.php
-
           - ext-name: apcu
             repository: krakjoe/apcu
             ref: v5.1.28

@@ -46,6 +46,7 @@ BUILD_CMD="${APK_PART}${PRE_SCRIPT_PART}phpize && ./configure ${CONFIGURE} && ma
 
 echo "==> Building inside ${IMAGE}"
 docker run --rm \
+    -it \
     -v "$(pwd):/workspace" \
     -w /workspace/ext \
     "$IMAGE" \

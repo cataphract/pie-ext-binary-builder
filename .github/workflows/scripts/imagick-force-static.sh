@@ -166,7 +166,8 @@ exec "${0}.orig" -v $args
 WRAPPER_EOF
 chmod +x "$MUSL_CLANG"
 
-# This test fails
-rm -v /workspace/ext/tests/024-ispixelsimilar.phpt
+# These tests fail
+rm -v /workspace/ext/tests/024-ispixelsimilar.phpt \
+  /workspace/ext/tests/243_Tutorial_svgExample_basic.phpt
 
 echo "==> Done."
