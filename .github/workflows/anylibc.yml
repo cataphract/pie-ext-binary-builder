@@ -311,12 +311,6 @@ jobs:
           ref: ${{ matrix.ref }}
           path: ext
 
-      - name: Download .so artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ matrix.ext-name }}-${{ matrix.variant }}-so
-          path: ext/modules/
-
       - name: Install host APT packages
         if: matrix.host-apt-packages != ''
         run: sudo apt-get install -y ${{ matrix.host-apt-packages }}
@@ -329,6 +323,16 @@ jobs:
         env:
           debug: ${{ matrix.debug }}
           phpts: ${{ matrix.phpts }}
+
+      - name: Download .so artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.ext-name }}-${{ matrix.variant }}-so
+          path: ext/modules/
+
+      - name: Run phpize to obtain run-tests.php
+        working-directory: ext
+        run: phpize
 
       - name: Run pre-test host script
         if: matrix.host-pre-test-script != ''
