@@ -20,15 +20,19 @@ set -eu
 # (PHP's internal copy).  On external-PCRE PHP that file does not exist, so
 # we create a redirect that pulls in the installed system header.
 PCRE2LIB_DIR=/usr/local/include/php/ext/pcre/pcre2lib
-mkdir -p "$PCRE2LIB_DIR"
-cat > "$PCRE2LIB_DIR/pcre2.h" << 'HDR_EOF'
+if [ ! -f "$PCRE2LIB_DIR/pcre2.h" ]; then
+    mkdir -p "$PCRE2LIB_DIR"
+    cat > "$PCRE2LIB_DIR/pcre2.h" << 'HDR_EOF'
 /* Redirect to the system PCRE2 header for anylibc compat builds. */
 #ifndef PCRE2_CODE_UNIT_WIDTH
 # define PCRE2_CODE_UNIT_WIDTH 8
 #endif
 #include <pcre2.h>
 HDR_EOF
-echo "==> pcre2lib/pcre2.h stub installed."
+    echo "==> pcre2lib/pcre2.h stub installed."
+else
+    echo "==> pcre2lib/pcre2.h already exists (bundled PCRE2), skipping stub."
+fi
 
 # ── 2. C resolver ────────────────────────────────────────────────────────────
 cat > /tmp/pcre2_compat_resolve.c << 'C_EOF'
@@ -236,6 +240,27 @@ php_pcre2_\name:
     pcre2_compat substring_list_get
     pcre2_compat substring_nametable_scan
     pcre2_compat substring_number_from_name
+
+/*
+ * sigsetjmp replacement for anylibc builds.
+ *
+ * musl's sigsetjmp (statically linked into the .so) is:
+ *   push %rbp; mov %rsp,%rbp; call __sigsetjmp@plt; pop %rbp; ret
+ * The extra frame corrupts the rbp that glibc's __sigsetjmp saves in the
+ * jmp_buf.  When glibc's siglongjmp restores that rbp the caller's
+ * stack frame is trashed, leading to SIGSEGV (apc_entry_003).
+ *
+ * The linker --wrap=sigsetjmp option (applied in the musl-clang wrapper
+ * below) redirects every call to sigsetjmp → __wrap_sigsetjmp here.
+ * This stub is a direct tail-call to __sigsetjmp with no extra frame,
+ * matching glibc's own sigsetjmp = "jmp __sigsetjmp".
+ */
+    .globl  __wrap_sigsetjmp
+    .hidden __wrap_sigsetjmp
+    .type   __wrap_sigsetjmp, @function
+__wrap_sigsetjmp:
+    jmp     __sigsetjmp@plt
+    .size   __wrap_sigsetjmp, . - __wrap_sigsetjmp
 ASM_EOF
 
 musl-clang -c /tmp/pcre2_compat_resolve.c -o /tmp/pcre2_compat_resolve.o
@@ -259,7 +284,12 @@ done
 if [ "$is_compile" = "1" ]; then
     exec "${0}.orig" "$@" -DHAVE_BUNDLED_PCRE
 elif [ "$is_shared" = "1" ]; then
-    exec "${0}.orig" "$@" /tmp/libpcre2_compat.a
+    # --wrap=sigsetjmp redirects every call to sigsetjmp → __wrap_sigsetjmp,
+    # which is a bare "jmp __sigsetjmp@plt" stub in libpcre2_compat.a.
+    # This avoids musl's statically-linked sigsetjmp wrapper (push rbp;
+    # call __sigsetjmp; pop rbp) that corrupts the jmp_buf rbp when glibc's
+    # siglongjmp later restores it, trashing the caller's stack frame.
+    exec "${0}.orig" "$@" -Wl,--wrap=sigsetjmp /tmp/libpcre2_compat.a
 else
     exec "${0}.orig" "$@"
 fi
