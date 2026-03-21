@@ -114,7 +114,7 @@ jobs:
             variant: 8.0-release
             image: ghcr.io/cataphract/php-minimal:8.0-release
             glibc-image: php:8.0-cli
-            glibc-apt-packages: ghostscript gsfonts
+            glibc-apt-packages: ghostscript gsfonts imagemagick-6-common
             glibc-pre-test-cmd: ln -sf /etc/ImageMagick-6 /etc/ImageMagick-7
             debug: 'false'
             phpts: nts
@@ -127,7 +127,7 @@ jobs:
             variant: 8.5-release-zts
             image: ghcr.io/cataphract/php-minimal:8.5-release-zts
             glibc-image: php:8.5-zts
-            glibc-apt-packages: ghostscript gsfonts
+            glibc-apt-packages: ghostscript gsfonts imagemagick-6-common
             glibc-pre-test-cmd: ln -sf /etc/ImageMagick-6 /etc/ImageMagick-7
             debug: 'false'
             phpts: ts
