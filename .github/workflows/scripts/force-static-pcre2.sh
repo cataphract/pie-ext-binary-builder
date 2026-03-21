@@ -118,39 +118,37 @@ __attribute__((constructor))
 static void pcre2_compat_resolve(void)
 {
     /*
-     * Determine our own DSO path so we can detect whether
-     * dlsym(RTLD_DEFAULT, "php_pcre2_match") found PHP's copy or our stub.
+     * RTLD_DEEPBIND (used by PHP to load extensions) affects even
+     * dlsym(RTLD_DEFAULT, ...) for symbols defined in apcu.so: it finds
+     * apcu.so's own stubs instead of PHP binary's exports.
+     *
+     * pcre2_match_8 is NOT defined in apcu.so, so dlsym(RTLD_DEFAULT, ...)
+     * for it is unaffected by RTLD_DEEPBIND.  It is present in the global
+     * scope only when PHP uses an external libpcre2 (DT_NEEDED dependency).
+     *
+     * For bundled-PCRE2 PHP, use dlopen(NULL, ...) to obtain a handle to
+     * the main executable and resolve php_pcre2_* directly from there,
+     * bypassing the RTLD_DEEPBIND local scope entirely.
      */
-    static const char _anchor = 0;
-    Dl_info self_info = {0};
-    dladdr((void *)&_anchor, &self_info);
+    void *pcre2_match_direct = dlsym(RTLD_DEFAULT, "pcre2_match_8");
 
-    /*
-     * Probe: if php_pcre2_match lives in a different file than us, the PHP
-     * binary exports it (bundled PCRE2) → use php_pcre2_* for everything.
-     * Otherwise PHP has external PCRE2 and doesn't export php_pcre2_* →
-     * use pcre2_*_8 (available in the global scope from PHP's libpcre2 dep).
-     */
-    int use_php = 0;
-    {
-        void *probe = dlsym(RTLD_DEFAULT, "php_pcre2_match");
-        if (probe) {
-            Dl_info fi = {0};
-            dladdr(probe, &fi);
-            if (fi.dli_fname && self_info.dli_fname &&
-                strcmp(fi.dli_fname, self_info.dli_fname) != 0)
-                use_php = 1;
-        }
-    }
-
-    if (use_php) {
-#define X(name) _pcre2_compat_##name##_fn = dlsym(RTLD_DEFAULT, "php_pcre2_" #name);
-        PCRE2_SYMS
-#undef X
-    } else {
+    if (pcre2_match_direct) {
+        /* External PCRE2: pcre2_*_8 are already in the global scope
+         * via PHP binary's DT_NEEDED on libpcre2-8.so.0. */
 #define X(name) _pcre2_compat_##name##_fn = dlsym(RTLD_DEFAULT, "pcre2_" #name "_8");
         PCRE2_SYMS
 #undef X
+    } else {
+        /* Bundled PCRE2: php_pcre2_* are exported by the PHP binary.
+         * dlopen(NULL, RTLD_LAZY) opens the main executable; dlsym on
+         * that handle searches the main program directly, not apcu.so's
+         * local scope, so RTLD_DEEPBIND does not redirect the lookup. */
+        void *main_handle = dlopen(NULL, RTLD_LAZY);
+        if (main_handle) {
+#define X(name) _pcre2_compat_##name##_fn = dlsym(main_handle, "php_pcre2_" #name);
+            PCRE2_SYMS
+#undef X
+        }
     }
 }
 C_EOF
