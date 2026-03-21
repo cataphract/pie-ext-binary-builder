@@ -17,7 +17,7 @@ IM_TAG=$(grep '#define MAGICKCORE_PACKAGE_VERSION' \
 echo "==> Alpine ${ALPINE_VER}: rebuilding delegate libs + IM ${IM_TAG} with -fPIC..."
 
 apk add --no-cache -q \
-    abuild git cmake automake autoconf libtool \
+    abuild git cmake \
     libjpeg-turbo-dev libpng-dev zlib-dev xz-dev libxml2-dev freetype-dev
 
 abuild-keygen -a -n 2>/dev/null
@@ -44,7 +44,9 @@ pkg_srcdir() {
     fi
     cd "$dir"
     mkdir -p /var/cache/distfiles
-    if ! abuild -F fetch unpack prepare >"/tmp/abuild_${pkg}.log" 2>&1; then
+    # Use 'deps' so abuild installs makedepends before running prepare
+    # (avoids whack-a-mole with missing autotools like aclocal, libtoolize, autopoint)
+    if ! abuild -F deps fetch unpack prepare >"/tmp/abuild_${pkg}.log" 2>&1; then
         echo "==> ERROR: abuild failed for ${pkg} (exit $?):" >&2
         cat "/tmp/abuild_${pkg}.log" >&2
         exit 1
