@@ -37,8 +37,18 @@ git checkout
 pkg_srcdir() {
     local pkg="$1" dir="/tmp/aports/main/$1"
     local srcdir="${dir}/src"
+    if [ ! -f "${dir}/APKBUILD" ]; then
+        echo "==> ERROR: APKBUILD missing for ${pkg} at ${dir}; listing /tmp/aports/main/:" >&2
+        ls /tmp/aports/main/ >&2 || true
+        exit 1
+    fi
     cd "$dir"
-    abuild -F fetch unpack prepare >/dev/null 2>&1
+    mkdir -p /var/cache/distfiles
+    if ! abuild -F fetch unpack prepare >"/tmp/abuild_${pkg}.log" 2>&1; then
+        echo "==> ERROR: abuild failed for ${pkg} (exit $?):" >&2
+        cat "/tmp/abuild_${pkg}.log" >&2
+        exit 1
+    fi
     eval "$(grep -E '^(pkgname|pkgver|builddir)=' APKBUILD | head -3)"
     # builddir may reference $srcdir (e.g. builddir="$srcdir/$pkgname-$pkgver")
     # expand it with srcdir set above, fall back to $srcdir/$pkgname-$pkgver
@@ -47,19 +57,26 @@ pkg_srcdir() {
         echo "$computed"
     else
         # Newer Alpine may unpack to a differently-named directory; find it
-        find "$srcdir" -maxdepth 1 -mindepth 1 -type d | head -1
+        local found
+        found=$(find "$srcdir" -maxdepth 1 -mindepth 1 -type d | head -1)
+        if [ -z "$found" ]; then
+            echo "==> ERROR: no source dir found for ${pkg} (computed: ${computed})" >&2
+            cat "/tmp/abuild_${pkg}.log" >&2
+            exit 1
+        fi
+        echo "$found"
     fi
 }
 
 # zlib
-src=$(pkg_srcdir zlib)
+src=$(pkg_srcdir zlib); [ -n "$src" ] || exit 1
 cd "$src"
 CC=musl-clang CFLAGS="-fPIC -O2" ./configure --static
 make -j"$(nproc)"
 cp libz.a /usr/lib/libz.a
 
 # libjpeg-turbo
-src=$(pkg_srcdir libjpeg-turbo)
+src=$(pkg_srcdir libjpeg-turbo); [ -n "$src" ] || exit 1
 cd "$src"
 cmake -B _build \
     -DCMAKE_C_COMPILER=musl-clang \
@@ -71,7 +88,7 @@ cmake --build _build -j"$(nproc)"
 cp _build/libjpeg.a /usr/lib/libjpeg.a
 
 # libpng
-src=$(pkg_srcdir libpng)
+src=$(pkg_srcdir libpng); [ -n "$src" ] || exit 1
 cd "$src"
 CC=musl-clang CFLAGS="-fPIC -O2" \
     ./configure --prefix=/usr --disable-shared --enable-static
@@ -79,7 +96,7 @@ make -j"$(nproc)"
 cp .libs/libpng16.a /usr/lib/libpng16.a
 
 # xz
-src=$(pkg_srcdir xz)
+src=$(pkg_srcdir xz); [ -n "$src" ] || exit 1
 cd "$src"
 cmake -B _build \
     -DCMAKE_C_COMPILER=musl-clang \
@@ -92,7 +109,7 @@ cmake --build _build -j"$(nproc)"
 cp _build/liblzma.a /usr/lib/liblzma.a
 
 # libxml2
-src=$(pkg_srcdir libxml2)
+src=$(pkg_srcdir libxml2); [ -n "$src" ] || exit 1
 cd "$src"
 CC=musl-clang CFLAGS="-fPIC -O2" \
     ./configure --prefix=/usr --disable-shared --enable-static \
@@ -101,13 +118,13 @@ make -j"$(nproc)"
 cp .libs/libxml2.a /usr/lib/libxml2.a
 
 # bzip2
-src=$(pkg_srcdir bzip2)
+src=$(pkg_srcdir bzip2); [ -n "$src" ] || exit 1
 cd "$src"
 CC=musl-clang CFLAGS="-fPIC -O2" make -f Makefile libbz2.a
 cp libbz2.a /usr/lib/libbz2.a
 
 # freetype
-src=$(pkg_srcdir freetype)
+src=$(pkg_srcdir freetype); [ -n "$src" ] || exit 1
 cd "$src"
 cmake -B _build \
     -DCMAKE_C_COMPILER=musl-clang \
