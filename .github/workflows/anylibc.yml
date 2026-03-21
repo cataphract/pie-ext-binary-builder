@@ -69,7 +69,6 @@ jobs:
             ref: v5.1.28
             container-packages: ''
             container-pre-build-script: ".github/workflows/scripts/force-static-pcre2.sh"
-            ldflags: '-lpcre2-8'
             variant: 8.0-release
             image: ghcr.io/cataphract/php-minimal:8.0-release
             glibc-image: php:8.0-cli
@@ -81,7 +80,6 @@ jobs:
             ref: v5.1.28
             container-packages: ''
             container-pre-build-script: ".github/workflows/scripts/force-static-pcre2.sh"
-            ldflags: '-lpcre2-8'
             variant: 8.5-release-zts
             image: ghcr.io/cataphract/php-minimal:8.5-release-zts
             glibc-image: php:8.5-zts
@@ -202,7 +200,7 @@ jobs:
             -v "${{ github.workspace }}/ext:/ext" \
             -w /ext \
             "${{ matrix.glibc-image }}" \
-            sh -c "${APT_PKGS:+apt-get install -y ${APT_PKGS} && }${PRE_CMD:+${PRE_CMD} && }php ${{ matrix.test-runner || 'run-tests.php' }} \
+            sh -c "${APT_PKGS:+apt update && apt-get install -y ${APT_PKGS} && }${PRE_CMD:+${PRE_CMD} && }php ${{ matrix.test-runner || 'run-tests.php' }} \
               -n -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=/ext/modules/${{ matrix.ext-name }}.so \
               --show-diff -q tests/"
 
