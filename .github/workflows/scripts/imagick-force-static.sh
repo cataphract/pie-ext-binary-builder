@@ -17,7 +17,7 @@ IM_TAG=$(grep '#define MAGICKCORE_PACKAGE_VERSION' \
 echo "==> Alpine ${ALPINE_VER}: rebuilding delegate libs + IM ${IM_TAG} with -fPIC..."
 
 apk add --no-cache -q \
-    abuild git cmake automake autoconf \
+    abuild git cmake automake autoconf libtool \
     libjpeg-turbo-dev libpng-dev zlib-dev xz-dev libxml2-dev freetype-dev
 
 abuild-keygen -a -n 2>/dev/null
