@@ -167,6 +167,38 @@ jobs:
             debug: 'false'
             phpts: ts
 
+          - ext-name: memcached
+            repository: php-memcached-dev/php-memcached
+            ref: v3.3.0
+            container-packages: memcached
+            container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
+            configure-flags: --disable-memcached-sasl --disable-memcached-protocol
+            variant: 8.0-release
+            image: ghcr.io/cataphract/php-minimal:8.0-release
+            glibc-image: php:8.0-cli
+            glibc-apt-packages: memcached
+            glibc-pre-test-cmd: memcached -d -u nobody && sleep 0.3
+            musl-pre-test-cmd: memcached -d -u nobody && sleep 0.3
+            test-dir: tests/*.phpt
+            debug: 'false'
+            phpts: nts
+
+          - ext-name: memcached
+            repository: php-memcached-dev/php-memcached
+            ref: v3.3.0
+            container-packages: memcached
+            container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
+            configure-flags: --disable-memcached-sasl --disable-memcached-protocol
+            variant: 8.5-release-zts
+            image: ghcr.io/cataphract/php-minimal:8.5-release-zts
+            glibc-image: php:8.5-zts
+            glibc-apt-packages: memcached
+            glibc-pre-test-cmd: memcached -d -u nobody && sleep 0.3
+            musl-pre-test-cmd: memcached -d -u nobody && sleep 0.3
+            test-dir: tests/*.phpt
+            debug: 'false'
+            phpts: ts
+
     steps:
       - name: Install tools
         run: apk add --no-cache gcompat git zip docker-cli patchelf
@@ -198,13 +230,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           build-path: ext
           libc-target: anylibc
+          configure-flags: ${{ matrix.configure-flags || '' }}
 
       - name: Test in musl
         working-directory: ext
         run: |
+          if [ -n "${{ matrix.musl-pre-test-cmd }}" ]; then eval "${{ matrix.musl-pre-test-cmd }}"; fi
           php ${{ matrix.test-runner || 'run-tests.php' }} \
             -n -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=$(realpath modules/${{ matrix.ext-name }}.so) \
-            --show-diff -q tests/
+            --show-diff -q ${{ matrix.test-dir || 'tests/' }}
 
       - name: Test on glibc
         run: |
@@ -217,7 +251,7 @@ jobs:
             "${{ matrix.glibc-image }}" \
             sh -c "${APT_PKGS:+apt update && apt-get install -y ${APT_PKGS} && }${PRE_CMD:+${PRE_CMD} && }php ${{ matrix.test-runner || 'run-tests.php' }} \
               -n -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=/ext/modules/${{ matrix.ext-name }}.so \
-              --show-diff -q tests/"
+              --show-diff -q ${{ matrix.test-dir || 'tests/' }}"
 
   delete-test-release:
     runs-on: ubuntu-latest

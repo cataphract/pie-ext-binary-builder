@@ -52,6 +52,14 @@ cmake -DCMAKE_TOOLCHAIN_FILE=/sysroot/$(arch)-none-linux-musl/Toolchain.cmake  \
   -DCMAKE_INSTALL_PREFIX=/usr ..
 make -j"$(nproc)" && make install
 
+# hashkit is a separate static archive from the cmake build; the php-memcached
+# extension links libmemcached via pkg-config and won't see -lhashkit unless
+# we add it explicitly.
+# -lc++ -lc++abi: libmemcached is C++; the PHP extension build uses musl-clang
+# (C wrapper) for the final link, so C++ runtime symbols must be added
+# explicitly here.
+sed -i '/^Libs:/s/$/ -lhashkit -lc++ -lc++abi/' /usr/lib/pkgconfig/libmemcached.pc
+
 #MUSL_CLANG=/usr/local/bin/musl-clang
 #mv "$MUSL_CLANG" "${MUSL_CLANG}.orig"
 #cat > "$MUSL_CLANG" << 'WRAPPER_EOF'
