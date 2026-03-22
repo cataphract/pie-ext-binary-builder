@@ -178,17 +178,20 @@ jobs:
             image: ghcr.io/cataphract/php-minimal:8.0-release
             glibc-image: php:8.0-cli
             glibc-apt-packages: memcached
-            # *_badunserialize tests are broken in php-memcached v3.3.0+ on PHP 8.x:
-            # the extension propagates __unserialize exceptions directly instead of
-            # emitting a warning first. Fails identically on a standard glibc build
-            # (empirically verified: php:8.0-cli + v3.4.0 from source, all 4 fail).
+            # *_badunserialize tests are broken in php-memcached v3.3.0+ on all PHP
+            # versions: the extension propagates __unserialize exceptions directly
+            # instead of emitting a warning first. Fails identically on a standard
+            # glibc build (empirically verified: php:8.0-cli + v3.4.0 from source,
+            # all 4 fail; also verified on php:7.4-cli + v3.4.0 from source).
+            # musl step runs first and removes files; glibc docker run mounts the
+            # same dir so they're already gone — use rm -f in both.
             glibc-pre-test-cmd: >-
               memcached -d -u nobody && sleep 0.3 &&
-              rm tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
+              rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
               tests/getdelayed_badunserialize.phpt tests/getmulti_badunserialize.phpt
             musl-pre-test-cmd: >-
               memcached -d -u nobody && sleep 0.3 &&
-              rm tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
+              rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
               tests/getdelayed_badunserialize.phpt tests/getmulti_badunserialize.phpt
             test-dir: tests/*.phpt
             debug: 'false'
@@ -208,11 +211,11 @@ jobs:
             # php:8.5-zts + v3.4.0 from source.
             glibc-pre-test-cmd: >-
               memcached -d -u nobody && sleep 0.3 &&
-              rm tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
+              rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
               tests/getdelayed_badunserialize.phpt tests/getmulti_badunserialize.phpt
             musl-pre-test-cmd: >-
               memcached -d -u nobody && sleep 0.3 &&
-              rm tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
+              rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
               tests/getdelayed_badunserialize.phpt tests/getmulti_badunserialize.phpt
             test-dir: tests/*.phpt
             debug: 'false'
