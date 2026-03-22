@@ -70,7 +70,11 @@ pkg_srcdir() {
     fi
 }
 
-# zlib
+# zlib — pre-fetch from GitHub; zlib.net returns 415 in CI
+mkdir -p /var/cache/distfiles
+_zlib_ver=$(grep '^pkgver=' /tmp/aports/main/zlib/APKBUILD | cut -d= -f2)
+wget -qO "/var/cache/distfiles/zlib-${_zlib_ver}.tar.gz" \
+    "https://github.com/madler/zlib/releases/download/v${_zlib_ver}/zlib-${_zlib_ver}.tar.gz"
 src=$(pkg_srcdir zlib); [ -n "$src" ] || exit 1
 cd "$src"
 CC=musl-clang CFLAGS="-fPIC -O2" ./configure --static
