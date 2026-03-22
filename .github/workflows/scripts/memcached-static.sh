@@ -10,7 +10,7 @@ trap open_shell ERR
 
 ALPINE_VER=$(cat /etc/alpine-release | cut -d. -f1,2)
 
-apk add --no-cache -q abuild git flex
+apk add --no-cache -q abuild git flex cyrus-sasl-dev cyrus-sasl-static
 
 abuild-keygen -a -n 2>/dev/null
 install -m 644 /root/.abuild/*.pub /etc/apk/keys/ 2>/dev/null || true
@@ -59,6 +59,23 @@ make -j"$(nproc)" && make install
 # (C wrapper) for the final link, so C++ runtime symbols must be added
 # explicitly here.
 sed -i '/^Libs:/s/$/ -lhashkit -lc++ -lc++abi/' /usr/lib/pkgconfig/libmemcached.pc
+
+# cyrus-sasl: remove .so so the linker picks the static .a we installed
+rm -f /usr/lib/libsasl2.so /usr/lib/libsasl2.so.*
+
+# igbinary: build as a PHP extension, extract .o files into a static archive,
+# and install the header so php-memcached configure can find it.
+# The static archive is later linked into memcached.so via LDFLAGS=-ligbinary.
+git clone -q --depth 1 -b 3.2.16 \
+    https://github.com/igbinary/igbinary /tmp/igbinary
+cd /tmp/igbinary
+phpize >/dev/null 2>&1
+CC=musl-clang ./configure --enable-igbinary >/dev/null 2>&1
+make -j"$(nproc)" >/dev/null 2>&1
+ar rcs /usr/lib/libigbinary.a src/php7/.libs/*.o
+PHPINCDIR=$(php-config --include-dir)
+mkdir -p "$PHPINCDIR/ext/igbinary"
+cp src/igbinary.h "$PHPINCDIR/ext/igbinary/"
 
 #MUSL_CLANG=/usr/local/bin/musl-clang
 #mv "$MUSL_CLANG" "${MUSL_CLANG}.orig"

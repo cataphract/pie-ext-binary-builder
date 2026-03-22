@@ -173,30 +173,16 @@ jobs:
             ref: v3.4.0
             container-packages: memcached
             container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
-            configure-flags: --disable-memcached-sasl --disable-memcached-protocol
+            configure-flags: --enable-memcached-sasl --enable-memcached-igbinary
+            # igbinary symbols come from the statically built libigbinary.a
+            # (memcached-static.sh); configure doesn't add -ligbinary itself.
+            ldflags: '-ligbinary'
             variant: 8.0-release
             image: ghcr.io/cataphract/php-minimal:8.0-release
             glibc-image: php:8.0-cli
             glibc-apt-packages: memcached
-            # *_badunserialize tests require igbinary to be compiled in as the
-            # default serializer (php_memcached_private.h: SERIALIZER_DEFAULT =
-            # SERIALIZER_IGBINARY when HAVE_MEMCACHED_IGBINARY). With igbinary,
-            # igbinary_unserialize() returns non-zero on __unserialize() exception,
-            # triggering the warning. Without igbinary (our build uses PHP's
-            # built-in serializer), php_var_unserialize() returns 1 even when
-            # __unserialize() throws, so no warning is emitted and the test fails.
-            # Confirmed: all 4 fail with --disable-memcached-sasl (no igbinary)
-            # on php:8.0-cli and php:8.3-cli from source (empirically verified).
-            # musl step runs first and removes files; glibc docker run mounts the
-            # same dir so they're already gone — use rm -f in both.
-            glibc-pre-test-cmd: >-
-              memcached -d -u nobody && sleep 0.3 &&
-              rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
-              tests/getdelayed_badunserialize.phpt tests/getmulti_badunserialize.phpt
-            musl-pre-test-cmd: >-
-              memcached -d -u nobody && sleep 0.3 &&
-              rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
-              tests/getdelayed_badunserialize.phpt tests/getmulti_badunserialize.phpt
+            glibc-pre-test-cmd: memcached -d -u nobody && sleep 0.3
+            musl-pre-test-cmd: memcached -d -u nobody && sleep 0.3
             test-dir: tests/*.phpt
             debug: 'false'
             phpts: nts
@@ -206,20 +192,14 @@ jobs:
             ref: v3.4.0
             container-packages: memcached
             container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
-            configure-flags: --disable-memcached-sasl --disable-memcached-protocol
+            configure-flags: --enable-memcached-sasl --enable-memcached-igbinary
+            ldflags: '-ligbinary'
             variant: 8.5-release-zts
             image: ghcr.io/cataphract/php-minimal:8.5-release-zts
             glibc-image: php:8.5-zts
             glibc-apt-packages: memcached
-            # Same *_badunserialize failures as 8.0 (see above).
-            glibc-pre-test-cmd: >-
-              memcached -d -u nobody && sleep 0.3 &&
-              rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
-              tests/getdelayed_badunserialize.phpt tests/getmulti_badunserialize.phpt
-            musl-pre-test-cmd: >-
-              memcached -d -u nobody && sleep 0.3 &&
-              rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
-              tests/getdelayed_badunserialize.phpt tests/getmulti_badunserialize.phpt
+            glibc-pre-test-cmd: memcached -d -u nobody && sleep 0.3
+            musl-pre-test-cmd: memcached -d -u nobody && sleep 0.3
             test-dir: tests/*.phpt
             debug: 'false'
             phpts: ts
