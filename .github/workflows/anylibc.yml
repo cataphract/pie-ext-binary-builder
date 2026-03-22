@@ -177,6 +177,9 @@ jobs:
             # igbinary symbols come from the statically built libigbinary.a
             # (memcached-static.sh); configure doesn't add -ligbinary itself.
             ldflags: '-ligbinary'
+            # igbinary.so is built by memcached-static.sh and placed in ext/modules/.
+            # It must be loaded before memcached.so to satisfy ZEND_MOD_REQUIRED.
+            extra-extension: modules/igbinary.so
             variant: 8.0-release
             image: ghcr.io/cataphract/php-minimal:8.0-release
             glibc-image: php:8.0-cli
@@ -194,6 +197,7 @@ jobs:
             container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
             configure-flags: --enable-memcached-sasl --enable-memcached-igbinary
             ldflags: '-ligbinary'
+            extra-extension: modules/igbinary.so
             variant: 8.5-release-zts
             image: ghcr.io/cataphract/php-minimal:8.5-release-zts
             glibc-image: php:8.5-zts
@@ -241,21 +245,26 @@ jobs:
         working-directory: ext
         run: |
           if [ -n "${{ matrix.musl-pre-test-cmd }}" ]; then eval "${{ matrix.musl-pre-test-cmd }}"; fi
+          EXTRA_EXT="${{ matrix.extra-extension }}"
           php ${{ matrix.test-runner || 'run-tests.php' }} \
-            -n -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=$(realpath modules/${{ matrix.ext-name }}.so) \
+            -n \
+            ${EXTRA_EXT:+-d extension=$(realpath "$EXTRA_EXT")} \
+            -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=$(realpath modules/${{ matrix.ext-name }}.so) \
             --show-diff -q ${{ matrix.test-dir || 'tests/' }}
 
       - name: Test on glibc
         run: |
           APT_PKGS="${{ matrix.glibc-apt-packages }}"
           PRE_CMD="${{ matrix.glibc-pre-test-cmd }}"
+          EXTRA_EXT="${{ matrix.extra-extension }}"
           docker run --rm \
             -e DEBIAN_FRONTEND=noninteractive \
             -v "${{ github.workspace }}/ext:/ext" \
             -w /ext \
             "${{ matrix.glibc-image }}" \
             sh -c "${APT_PKGS:+apt update && apt-get install -y ${APT_PKGS} && }${PRE_CMD:+${PRE_CMD} && }php ${{ matrix.test-runner || 'run-tests.php' }} \
-              -n -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=/ext/modules/${{ matrix.ext-name }}.so \
+              -n ${EXTRA_EXT:+-d extension=/ext/${EXTRA_EXT}} \
+              -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=/ext/modules/${{ matrix.ext-name }}.so \
               --show-diff -q ${{ matrix.test-dir || 'tests/' }}"
 
   delete-test-release:
