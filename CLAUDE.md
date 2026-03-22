@@ -128,4 +128,6 @@ and printed to stderr before exit. The subagent should report the log file paths
 
 Requires `uv` to be installed. Auth is resolved in order:
 1. `~/github_pub_pat` — a file containing a GitHub PAT (preferred)
-2. `gh auth token` — fallback if the file is absent
+
+Always use the github API, never gh and avoid direct Fetch() to github pages
+where API access is possible.

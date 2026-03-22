@@ -178,11 +178,15 @@ jobs:
             image: ghcr.io/cataphract/php-minimal:8.0-release
             glibc-image: php:8.0-cli
             glibc-apt-packages: memcached
-            # *_badunserialize tests are broken in php-memcached v3.3.0+ on all PHP
-            # versions: the extension propagates __unserialize exceptions directly
-            # instead of emitting a warning first. Fails identically on a standard
-            # glibc build (empirically verified: php:8.0-cli + v3.4.0 from source,
-            # all 4 fail; also verified on php:7.4-cli + v3.4.0 from source).
+            # *_badunserialize tests require igbinary to be compiled in as the
+            # default serializer (php_memcached_private.h: SERIALIZER_DEFAULT =
+            # SERIALIZER_IGBINARY when HAVE_MEMCACHED_IGBINARY). With igbinary,
+            # igbinary_unserialize() returns non-zero on __unserialize() exception,
+            # triggering the warning. Without igbinary (our build uses PHP's
+            # built-in serializer), php_var_unserialize() returns 1 even when
+            # __unserialize() throws, so no warning is emitted and the test fails.
+            # Confirmed: all 4 fail with --disable-memcached-sasl (no igbinary)
+            # on php:8.0-cli and php:8.3-cli from source (empirically verified).
             # musl step runs first and removes files; glibc docker run mounts the
             # same dir so they're already gone — use rm -f in both.
             glibc-pre-test-cmd: >-
@@ -207,8 +211,7 @@ jobs:
             image: ghcr.io/cataphract/php-minimal:8.5-release-zts
             glibc-image: php:8.5-zts
             glibc-apt-packages: memcached
-            # Same *_badunserialize failures as 8.0 (see above); verified on
-            # php:8.5-zts + v3.4.0 from source.
+            # Same *_badunserialize failures as 8.0 (see above).
             glibc-pre-test-cmd: >-
               memcached -d -u nobody && sleep 0.3 &&
               rm -f tests/fetch_badunserialize.phpt tests/fetchall_badunserialize.phpt
