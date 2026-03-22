@@ -132,10 +132,6 @@ jobs:
             glibc-image: php:8.0-cli
             glibc-apt-packages: ghostscript gsfonts imagemagick-6-common
             glibc-pre-test-cmd: ln -sf /etc/ImageMagick-6 /etc/ImageMagick-7
-            # Font-dependent tests fail on glibc: IM7 built without fontconfig in
-            # Alpine so it reads type-ghostscript.xml, but Debian's font paths
-            # differ from Alpine's. Core functionality (load + non-font ops) passes.
-            allow-test-failures: 'true'
             debug: 'false'
             phpts: nts
 
@@ -149,7 +145,6 @@ jobs:
             glibc-image: php:8.5-zts
             glibc-apt-packages: ghostscript gsfonts imagemagick-6-common
             glibc-pre-test-cmd: ln -sf /etc/ImageMagick-6 /etc/ImageMagick-7
-            allow-test-failures: 'true'
             debug: 'false'
             phpts: ts
 
@@ -186,9 +181,6 @@ jobs:
             glibc-pre-test-cmd: memcached -d -u nobody && sleep 0.3
             musl-pre-test-cmd: memcached -d -u nobody && sleep 0.3
             test-dir: tests/*.phpt
-            # *_badunserialize tests fail on PHP 8.0 due to Serializable API
-            # changes; also fails with a standard glibc build, not our fault.
-            allow-test-failures: 'true'
             debug: 'false'
             phpts: nts
 
@@ -205,9 +197,6 @@ jobs:
             glibc-pre-test-cmd: memcached -d -u nobody && sleep 0.3
             musl-pre-test-cmd: memcached -d -u nobody && sleep 0.3
             test-dir: tests/*.phpt
-            # *_badunserialize tests fail on PHP 8.5 too; also fails with a
-            # standard glibc build, not our fault.
-            allow-test-failures: 'true'
             debug: 'false'
             phpts: ts
 
@@ -245,7 +234,6 @@ jobs:
           configure-flags: ${{ matrix.configure-flags || '' }}
 
       - name: Test in musl
-        continue-on-error: ${{ matrix.allow-test-failures == 'true' }}
         working-directory: ext
         run: |
           if [ -n "${{ matrix.musl-pre-test-cmd }}" ]; then eval "${{ matrix.musl-pre-test-cmd }}"; fi
@@ -254,7 +242,6 @@ jobs:
             --show-diff -q ${{ matrix.test-dir || 'tests/' }}
 
       - name: Test on glibc
-        continue-on-error: ${{ matrix.allow-test-failures == 'true' }}
         run: |
           APT_PKGS="${{ matrix.glibc-apt-packages }}"
           PRE_CMD="${{ matrix.glibc-pre-test-cmd }}"
