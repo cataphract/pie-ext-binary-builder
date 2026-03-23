@@ -171,9 +171,6 @@ jobs:
             container-packages: memcached
             container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
             configure-flags: --enable-memcached-sasl --enable-memcached-igbinary
-            # igbinary symbols come from the statically built libigbinary.a
-            # (memcached-static.sh); configure doesn't add -ligbinary itself.
-            ldflags: '-ligbinary'
             # igbinary.so is built by memcached-static.sh and placed in ext/modules/.
             # It must be loaded before memcached.so to satisfy ZEND_MOD_REQUIRED.
             extra-extension: modules/igbinary.so
@@ -193,7 +190,6 @@ jobs:
             container-packages: memcached
             container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
             configure-flags: --enable-memcached-sasl --enable-memcached-igbinary
-            ldflags: '-ligbinary'
             extra-extension: modules/igbinary.so
             variant: 8.5-release-zts
             image: ghcr.io/cataphract/php-minimal:8.5-release-zts
