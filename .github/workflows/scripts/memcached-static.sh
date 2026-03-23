@@ -110,42 +110,21 @@ CC=musl-clang CFLAGS="-fPIC -O2" ./configure \
 make -j"$(nproc)" -C common
 make -j"$(nproc)" -C lib
 # lib/Makefile uses 'ar cru' to add plugin objects but doesn't ranlib afterwards;
-# update the symbol index so the linker can resolve plugin symbols at link time.
 ranlib lib/.libs/libsasl2.a
-# Copy to both paths: cp may break the hardlink between /usr/lib and the sysroot,
-# so copy directly from the source archive to ensure both are updated.
 cp lib/.libs/libsasl2.a /usr/lib/libsasl2.a
-cp lib/.libs/libsasl2.a /sysroot/$(arch)-none-linux-musl/usr/lib/libsasl2.a
-# Remove shared libs so the linker is forced to pick the static .a
 rm -f /usr/lib/libsasl2.so /usr/lib/libsasl2.so.*
 
-# igbinary: build as a PHP extension, extract .o files into a static archive,
-# and install the header so php-memcached configure can find it.
-# The static archive is later linked into memcached.so via LDFLAGS=-ligbinary.
+# igbinary php extension
 git clone -q --depth 1 -b 3.2.16 \
     https://github.com/igbinary/igbinary /tmp/igbinary
 cd /tmp/igbinary
 phpize >/dev/null 2>&1
 CC=musl-clang ./configure --enable-igbinary >/dev/null 2>&1
 make -j"$(nproc)" >/dev/null 2>&1
-# Copy igbinary.so to ext/modules/ as a standalone PHP extension.
-# php-memcached declares ZEND_MOD_REQUIRED("igbinary"), so PHP refuses to load
-# memcached.so unless igbinary is registered as a PHP module first.  The static
-# archive approach (libigbinary.a linked into memcached.so) does NOT satisfy
-# this check because the localized get_module is invisible to PHP's module
-# registry.  Shipping igbinary.so alongside memcached.so and loading it first
-# in the test -d extension= flags is the correct solution.
 mkdir -p "${GITHUB_WORKSPACE}/ext/modules"
 cp modules/igbinary.so "${GITHUB_WORKSPACE}/ext/modules/igbinary.so"
-# Remove musl libc dep so igbinary.so also loads in glibc containers.
 patchelf --remove-needed "libc.musl-$(uname -m).so.1" \
     "${GITHUB_WORKSPACE}/ext/modules/igbinary.so" 2>/dev/null || true
-# Localize get_module so it doesn't collide with memcached.so's own get_module
-# when the archive is linked in (every PHP extension exports this symbol).
-for f in src/php7/.libs/*.o; do
-    objcopy --localize-symbol=get_module "$f"
-done
-ar rcs /usr/lib/libigbinary.a src/php7/.libs/*.o
 PHPINCDIR=$(php-config --include-dir)
 mkdir -p "$PHPINCDIR/ext/igbinary/src/php7"
 cp igbinary.h "$PHPINCDIR/ext/igbinary/"

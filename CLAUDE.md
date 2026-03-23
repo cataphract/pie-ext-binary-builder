@@ -7,20 +7,19 @@ The script mounts the current directory as `/workspace` inside the container.
 
 ```bash
 sudo rm -rf ext   # ext/ may be owned by root from a previous Docker build
-GITHUB_WORKSPACE=/workspace ./build-ext-musl.sh \
-    --image php-minimal:8.0-local \
+./build-ext-musl.sh \
+    --image ghcr.io/cataphract/php-minimal:8.0-release \
     --repo krakjoe/apcu --ref v5.1.28 \
     [--packages "pkg1 pkg2"] \
-    [--pre-script .github/workflows/scripts/some-script.sh]
+    [--pre-script .github/workflows/scripts/some-script.sh] \
+    [--configure "--enable-foo --enable-bar"] \
+    [--ldflags "-lfoo"]
 ```
 
-**Important:** The script's `docker run` does not forward host environment
-variables. Pre-scripts that reference `${GITHUB_WORKSPACE}` need it set to
-`/workspace` (the in-container mount point). Pass it by prepending
-`GITHUB_WORKSPACE=/workspace` to the `./build-ext-musl.sh` invocation — the
-script must be modified to forward it with `-e GITHUB_WORKSPACE` to docker, or
-the pre-script must tolerate the variable being unset. Check whether the
-pre-script uses `set -eu`; if so, an unset `GITHUB_WORKSPACE` will abort it.
+The script forwards `GITHUB_WORKSPACE=/workspace` automatically. `--ldflags`
+mirrors the matrix `ldflags:` field: it is scoped to the build phase
+(phpize + configure + make) and does **not** affect the pre-build script, just
+as in CI where `env: LDFLAGS:` is on the action step only.
 
 ## Patchelf (remove musl libc dep before glibc testing)
 

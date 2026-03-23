@@ -8,6 +8,7 @@ REF="4.8.1"
 PACKAGES=""
 CONFIGURE=""
 PRE_SCRIPT=""
+LDFLAGS=""
 OPEN_SHELL=0
 
 while [[ $# -gt 0 ]]; do
@@ -18,6 +19,7 @@ while [[ $# -gt 0 ]]; do
         --packages)   PACKAGES="$2";   shift 2 ;;
         --configure)  CONFIGURE="$2";  shift 2 ;;
         --pre-script) PRE_SCRIPT="$2"; shift 2 ;;
+        --ldflags)    LDFLAGS="$2";    shift 2 ;;
         --shell)      OPEN_SHELL=1;    shift   ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
@@ -42,10 +44,19 @@ if [[ -n "$PRE_SCRIPT" ]]; then
     PRE_SCRIPT_PART="sh /workspace/${PRE_SCRIPT} && "
 fi
 
-BUILD_CMD="${APK_PART}${PRE_SCRIPT_PART}phpize && ./configure ${CONFIGURE} && make -j\$(nproc)"
+# Mirror CI exactly: pre-build script runs without LDFLAGS; the action step
+# (phpize + configure + make) runs with LDFLAGS set in its environment.
+# Use 'env' to scope LDFLAGS to the build phase only.
+BUILD_PHASE="phpize && ./configure ${CONFIGURE} && make -j\$(nproc)"
+if [[ -n "$LDFLAGS" ]]; then
+    BUILD_PHASE="env LDFLAGS=$(printf '%q' "$LDFLAGS") sh -c $(printf '%q' "$BUILD_PHASE")"
+fi
+
+BUILD_CMD="${APK_PART}${PRE_SCRIPT_PART}${BUILD_PHASE}"
 
 echo "==> Building inside ${IMAGE}"
 docker run --rm \
+    -e GITHUB_WORKSPACE=/workspace \
     -v "$(pwd):/workspace" \
     -w /workspace/ext \
     "$IMAGE" \

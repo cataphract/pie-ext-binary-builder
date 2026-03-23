@@ -68,7 +68,6 @@ jobs:
             repository: krakjoe/apcu
             ref: v5.1.28
             container-packages: ''
-            container-pre-build-script: ".github/workflows/scripts/force-static-pcre2.sh"
             variant: 8.0-release
             image: ghcr.io/cataphract/php-minimal:8.0-release
             glibc-image: php:8.0-cli
@@ -79,7 +78,6 @@ jobs:
             repository: krakjoe/apcu
             ref: v5.1.28
             container-packages: ''
-            container-pre-build-script: ".github/workflows/scripts/force-static-pcre2.sh"
             variant: 8.0-release-ondrej
             image: ghcr.io/cataphract/php-minimal:8.0-release
             glibc-image: ubuntu:22.04
@@ -95,7 +93,6 @@ jobs:
             repository: krakjoe/apcu
             ref: v5.1.28
             container-packages: ''
-            container-pre-build-script: ".github/workflows/scripts/force-static-pcre2.sh"
             variant: 8.5-release-zts
             image: ghcr.io/cataphract/php-minimal:8.5-release-zts
             glibc-image: php:8.5-zts
