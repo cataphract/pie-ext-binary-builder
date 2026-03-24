@@ -123,7 +123,7 @@ cp /usr/lib/libsasl2.a /usr/local/static-link/
 cp /usr/lib/libz.a /usr/local/static-link/
 
 # igbinary php extension
-git clone -q --depth 1 -b 3.2.16 \
+git clone -q --depth 1 -b 3.2.17RC1 \
     https://github.com/igbinary/igbinary /tmp/igbinary
 cd /tmp/igbinary
 phpize >/dev/null 2>&1
