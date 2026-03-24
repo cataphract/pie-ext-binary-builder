@@ -86,12 +86,6 @@ sed -i '/^Libs:/s/$/ -lhashkit -lsasl2 -lc++ -lc++abi/' /usr/lib/pkgconfig/libme
 src=$(pkg_srcdir cyrus-sasl)
 cd "$src"
 # Build core library only — no static plugins compiled in.
-# When plugins are compiled into libsasl2.a and linked into a .so, the linker
-# creates dynamic relocations for the function pointers in _sasl_static_plugins
-# instead of pulling the plugin objects from the archive, leaving the symbols
-# undefined at runtime.  With no static plugins the array is just a sentinel,
-# memcached.so loads cleanly, and SASL mechanism plugins are loaded at runtime
-# from /usr/lib/sasl2/ on the target system.
 CC=musl-clang CFLAGS="-fPIC -O2" ./configure \
     --prefix=/usr --sysconfdir=/etc \
     --enable-static --disable-shared \

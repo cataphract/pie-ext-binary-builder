@@ -44,8 +44,6 @@ pkg_srcdir() {
     fi
     cd "$dir"
     mkdir -p /var/cache/distfiles
-    # Use 'deps' so abuild installs makedepends before running prepare
-    # (avoids whack-a-mole with missing autotools like aclocal, libtoolize, autopoint)
     if ! abuild -F deps fetch unpack prepare >"/tmp/abuild_${pkg}.log" 2>&1; then
         echo "==> ERROR: abuild failed for ${pkg} (exit $?):" >&2
         cat "/tmp/abuild_${pkg}.log" >&2
@@ -70,7 +68,7 @@ pkg_srcdir() {
     fi
 }
 
-# zlib — pre-fetch from GitHub; zlib.net returns 415 in CI
+# zlib — pre-fetch from GitHub, not what's in the APKBUILD
 mkdir -p /var/cache/distfiles
 _zlib_ver=$(grep '^pkgver=' /tmp/aports/main/zlib/APKBUILD | cut -d= -f2)
 wget -qO "/var/cache/distfiles/zlib-${_zlib_ver}.tar.gz" \
@@ -85,7 +83,7 @@ cp libz.a /usr/lib/libz.a
 src=$(pkg_srcdir libjpeg-turbo); [ -n "$src" ] || exit 1
 cd "$src"
 cmake -B _build \
-    -DCMAKE_C_COMPILER=musl-clang \
+    -DCMAKE_TOOLCHAIN_FILE=/sysroot/$(arch)-none-linux-musl/Toolchain.cmake \
     -DCMAKE_C_FLAGS="-fPIC -O2" \
     -DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
     -DWITH_JPEG8=1 \
@@ -105,7 +103,7 @@ cp .libs/libpng16.a /usr/lib/libpng16.a
 src=$(pkg_srcdir xz); [ -n "$src" ] || exit 1
 cd "$src"
 cmake -B _build \
-    -DCMAKE_C_COMPILER=musl-clang \
+    -DCMAKE_TOOLCHAIN_FILE=/sysroot/$(arch)-none-linux-musl/Toolchain.cmake \
     -DCMAKE_C_FLAGS="-fPIC -O2" \
     -DBUILD_SHARED_LIBS=OFF \
     -DENABLE_TESTS=OFF \
@@ -133,7 +131,7 @@ cp libbz2.a /usr/lib/libbz2.a
 src=$(pkg_srcdir freetype); [ -n "$src" ] || exit 1
 cd "$src"
 cmake -B _build \
-    -DCMAKE_C_COMPILER=musl-clang \
+    -DCMAKE_TOOLCHAIN_FILE=/sysroot/$(arch)-none-linux-musl/Toolchain.cmake \
     -DCMAKE_C_FLAGS="-fPIC -O2" \
     -DBUILD_SHARED_LIBS=OFF \
     -DFT_DISABLE_BROTLI=ON   -DCMAKE_DISABLE_FIND_PACKAGE_BrotliDec=TRUE \
