@@ -10,7 +10,7 @@ trap open_shell ERR
 
 ALPINE_VER=$(cat /etc/alpine-release | cut -d. -f1,2)
 
-apk add --no-cache -q abuild git flex cyrus-sasl-dev cyrus-sasl-static
+apk add --no-cache -q abuild git flex cyrus-sasl-dev cyrus-sasl-static zlib-static
 
 abuild-keygen -a -n 2>/dev/null
 install -m 644 /root/.abuild/*.pub /etc/apk/keys/ 2>/dev/null || true
@@ -112,7 +112,15 @@ make -j"$(nproc)" -C lib
 # lib/Makefile uses 'ar cru' to add plugin objects but doesn't ranlib afterwards;
 ranlib lib/.libs/libsasl2.a
 cp lib/.libs/libsasl2.a /usr/lib/libsasl2.a
-rm -f /usr/lib/libsasl2.so /usr/lib/libsasl2.so.*
+
+# Place static-only copies of sasl2 and zlib into a dedicated directory.
+# The action passes -L/usr/local/static-link via LDFLAGS; because this
+# directory has no .so files the linker finds the .a first and stops,
+# giving us static linkage without removing the system shared libs (which
+# are needed by git and the compiler toolchain throughout this script).
+mkdir -p /usr/local/static-link
+cp /usr/lib/libsasl2.a /usr/local/static-link/
+cp /usr/lib/libz.a /usr/local/static-link/
 
 # igbinary php extension
 git clone -q --depth 1 -b 3.2.16 \

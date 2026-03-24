@@ -171,6 +171,11 @@ jobs:
             container-packages: memcached
             container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
             configure-flags: --enable-memcached-sasl --enable-memcached-igbinary
+            # -L/usr/local/static-link must precede the default lib paths so the
+            # linker finds the .a-only copies of libz and libsasl2 first (no .so
+            # present there), giving static linkage without removing system shared
+            # libs (needed by git/toolchain during the pre-build script).
+            ldflags: '-L/usr/local/static-link'
             # igbinary.so is built by memcached-static.sh and placed in ext/modules/.
             # It must be loaded before memcached.so to satisfy ZEND_MOD_REQUIRED.
             extra-extension: modules/igbinary.so
@@ -190,6 +195,7 @@ jobs:
             container-packages: memcached
             container-pre-build-script: ".github/workflows/scripts/memcached-static.sh"
             configure-flags: --enable-memcached-sasl --enable-memcached-igbinary
+            ldflags: '-L/usr/local/static-link'
             extra-extension: modules/igbinary.so
             variant: 8.5-release-zts
             image: ghcr.io/cataphract/php-minimal:8.5-release-zts
