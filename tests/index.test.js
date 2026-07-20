@@ -58,12 +58,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has type other than php-ext or php-ext-zend', async () => {
         fs.existsSync.mockReturnValue(true);
-
-        // jq -r ".type" composer.json
-        exec.getExecOutput.mockResolvedValue({
-            stdout: "library\n",
-            exitCode: 0,
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'library', name: 'foo/bar' }));
 
         await expect(action.determineExtensionNameFromComposerJson())
             .rejects
@@ -72,19 +67,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has valid php-ext.extension-name with ext- prefix defined', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "ext-test_ext\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', 'php-ext': { 'extension-name': 'ext-test_ext' } }));
 
         expect(await action.determineExtensionNameFromComposerJson())
             .toBe('test_ext');
@@ -92,19 +75,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has valid php-ext.extension-name defined', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "test_ext\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', 'php-ext': { 'extension-name': 'test_ext' } }));
 
         expect(await action.determineExtensionNameFromComposerJson())
             .toBe('test_ext');
@@ -112,19 +83,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has invalid php-ext.extension-name defined', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "invalid-ext-name\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', 'php-ext': { 'extension-name': 'invalid-ext-name' } }));
 
         await expect(action.determineExtensionNameFromComposerJson())
             .rejects
@@ -133,24 +92,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has no php-ext.extension-name defined, but package name is valid', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "\n", exitCode: 0 });
-            }
-
-            // jq -r '.name' composer.json
-            if (args.includes('.name')) {
-                return Promise.resolve({ stdout: "foo/bar\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', name: 'foo/bar' }));
 
         expect(await action.determineExtensionNameFromComposerJson())
             .toBe('bar');
@@ -158,24 +100,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has no php-ext.extension-name or package name defined', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "\n", exitCode: 0 });
-            }
-
-            // jq -r '.name' composer.json
-            if (args.includes('.name')) {
-                return Promise.resolve({ stdout: "\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext' }));
 
         await expect(action.determineExtensionNameFromComposerJson())
             .rejects
@@ -184,24 +109,7 @@ describe ('determineExtensionNameFromComposerJson', () => {
 
     test('composer.json has no php-ext.extension-name defined, and package name is invalid', async () => {
         fs.existsSync.mockReturnValue(true);
-        exec.getExecOutput.mockImplementation((command, args) => {
-            // jq -r ".type" composer.json
-            if (args.includes('.type')) {
-                return Promise.resolve({ stdout: "php-ext\n", exitCode: 0 });
-            }
-
-            // jq -r '."php-ext"."extension-name"' composer.json
-            if (args.includes('."php-ext"."extension-name"')) {
-                return Promise.resolve({ stdout: "\n", exitCode: 0 });
-            }
-
-            // jq -r '.name' composer.json
-            if (args.includes('.name')) {
-                return Promise.resolve({ stdout: "foo/invalid-ext-name\n", exitCode: 0 });
-            }
-
-            return Promise.reject(new Error('Test did not define command: ' + command + ' with args: ' + args));
-        });
+        fs.readFileSync.mockReturnValue(JSON.stringify({ type: 'php-ext', name: 'foo/invalid-ext-name' }));
 
         await expect(action.determineExtensionNameFromComposerJson())
             .rejects
@@ -275,6 +183,7 @@ describe('determineLibcFlavour', () => {
 
     beforeEach(() => {
         exec.getExecOutput.mockReset();
+        core.getInput.mockReset();
     });
 
     afterEach(() => {
@@ -282,6 +191,12 @@ describe('determineLibcFlavour', () => {
             value: originalPlatform,
             configurable: true
         });
+    });
+
+    test('anylibc libc-target returns anylibc without probing runner', async () => {
+        core.getInput.mockReturnValue('anylibc');
+        await expect(action.determineLibcFlavour()).resolves.toBe('anylibc');
+        expect(exec.getExecOutput).not.toHaveBeenCalled();
     });
 
     test('osx uses bsdlibc', async () => {
@@ -356,6 +271,10 @@ describe('determineZendThreadSafeMode', () => {
 });
 
 describe('buildExtension', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     test('builds the extension with configure params and default build path', async () => {
         core.getInput.mockImplementation((name) => {
             if (name === 'configure-flags') return '--enable-test --with-foo=/foo/bar';
@@ -382,6 +301,68 @@ describe('buildExtension', () => {
         expect(exec.exec).toHaveBeenCalledWith('phpize', [], { cwd: 'some/ext/path' });
         expect(exec.exec).toHaveBeenCalledWith('./configure', ['--enable-test'], { cwd: 'some/ext/path' });
         expect(exec.exec).toHaveBeenCalledWith('make', [], { cwd: 'some/ext/path' });
+    });
+
+
+    test('anylibc: removes musl libc dep when present', async () => {
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return '.';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libc.musl-x86_64.so.1\nlibm.so\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'foo.so' });
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('patchelf', ['--print-needed', 'modules/foo.so']);
+        expect(exec.exec).toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.musl-x86_64.so.1', 'modules/foo.so']);
+        expect(exec.exec).not.toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.so.6', expect.anything()]);
+    });
+
+    test('anylibc: removes glibc libc dep when present', async () => {
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return '.';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libc.so.6\nlibm.so\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'foo.so' });
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('patchelf', ['--print-needed', 'modules/foo.so']);
+        expect(exec.exec).toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.so.6', 'modules/foo.so']);
+        expect(exec.exec).not.toHaveBeenCalledWith('patchelf', ['--remove-needed', expect.stringMatching(/musl/), expect.anything()]);
+    });
+
+    test('anylibc: does not call patchelf --remove-needed when no libc dep found', async () => {
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return '.';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libm.so\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'foo.so' });
+
+        expect(exec.exec).not.toHaveBeenCalledWith('patchelf', expect.arrayContaining(['--remove-needed']));
+    });
+
+    test('anylibc: patchelf uses custom build path', async () => {
+        core.getInput.mockImplementation((name) => {
+            if (name === 'libc-target') return 'anylibc';
+            if (name === 'configure-flags') return '';
+            if (name === 'build-path') return 'ext';
+            return '';
+        });
+        exec.getExecOutput.mockResolvedValue({ stdout: 'libc.musl-x86_64.so.1\n', stderr: '' });
+
+        await action.buildExtension({ extSoFile: 'bar.so' });
+
+        expect(exec.getExecOutput).toHaveBeenCalledWith('patchelf', ['--print-needed', 'ext/modules/bar.so']);
+        expect(exec.exec).toHaveBeenCalledWith('patchelf', ['--remove-needed', 'libc.musl-x86_64.so.1', 'ext/modules/bar.so']);
     });
 });
 
@@ -430,6 +411,7 @@ describe('uploadReleaseAsset', () => {
     });
 
     test('throws error when there are no releases', async () => {
+        action._retryDelay = 0;
         octokit.rest.repos.listReleases.mockResolvedValue({data: []});
 
         await expect(action.uploadReleaseAsset('1.0.0', 'release-asset.zip'))
@@ -438,6 +420,7 @@ describe('uploadReleaseAsset', () => {
     });
 
     test('throws error when release not found', async () => {
+        action._retryDelay = 0;
         octokit.rest.repos.listReleases.mockResolvedValue({
             data: [
                 {
@@ -497,6 +480,10 @@ describe('extensionDetails', () => {
 });
 
 describe('main', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     test('main builds and uploads extension with default build path', async () => {
         vi.spyOn(action, 'extensionDetails').mockResolvedValue({
             releaseTag: '1.2.3',
@@ -541,5 +528,23 @@ describe('main', () => {
         expect(exec.exec).toHaveBeenCalledWith('ls', ['-l', 'src/php/ext/grpc/modules']);
         expect(exec.exec).toHaveBeenCalledWith('zip', ['-j', 'php_foo-1.2.3_php8.1-x86_64-linux-glibc-debug-zts.zip', 'src/php/ext/grpc/modules/foo.so']);
         expect(core.setOutput).toHaveBeenCalledWith('package-path', 'php_foo-1.2.3_php8.1-x86_64-linux-glibc-debug-zts.zip');
+    });
+
+    test('main skips zip and upload when no release-tag', async () => {
+        vi.spyOn(action, 'extensionDetails').mockResolvedValue({
+            releaseTag: '',
+            extSoFile: 'foo.so',
+            extPackageName: '',
+        });
+        vi.spyOn(action, 'buildExtension').mockResolvedValue();
+        vi.spyOn(action, 'uploadReleaseAsset').mockResolvedValue();
+        vi.spyOn(exec, 'exec').mockResolvedValue();
+
+        await action.main();
+
+        expect(action.buildExtension).toHaveBeenCalled();
+        expect(action.uploadReleaseAsset).not.toHaveBeenCalled();
+        expect(exec.exec).not.toHaveBeenCalledWith('zip', expect.anything());
+        expect(core.setOutput).not.toHaveBeenCalled();
     });
 });

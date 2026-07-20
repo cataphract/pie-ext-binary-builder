@@ -1,0 +1,155 @@
+name: C/C++ extension anylibc tests
+
+on:
+  push:
+  pull_request:
+
+env:
+  RELEASE_TAG: 0.0.0-fake+run_${{ github.run_id }}
+
+jobs:
+
+  create-test-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-tags: 'true'
+          ref: ${{ github.ref }}
+
+      - name: Create a fake tag for the build
+        run: |
+          git config --global user.email "Fake User"
+          git config --global user.name "fake-user@example.com"
+          git tag -a -m "test tag for CI build ${{ github.run_id }}" ${{ env.RELEASE_TAG }}
+          git push origin ${{ env.RELEASE_TAG }}
+
+      - name: Create a fake release for the build
+        run: gh release create "${{ env.RELEASE_TAG }}" --title "${{ env.RELEASE_TAG }}" --draft --notes-from-tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-extension:
+    name: ${{ matrix.ext-name }} / ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    needs: [create-test-release]
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ext-name: apcu
+            repository: krakjoe/apcu
+            ref: v5.1.28
+            container-packages: ''
+            variant: 8.0-release
+            image: ghcr.io/cataphract/php-minimal:8.0-release
+            glibc-image: php:8.0-cli
+            debug: 'false'
+            phpts: nts
+
+          - ext-name: apcu
+            repository: krakjoe/apcu
+            ref: v5.1.28
+            container-packages: ''
+            variant: 8.0-release-ondrej
+            image: ghcr.io/cataphract/php-minimal:8.0-release
+            glibc-image: ubuntu:22.04
+            glibc-apt-packages: software-properties-common ca-certificates
+            glibc-pre-test-cmd: add-apt-repository ppa:ondrej/php && apt-get update -q && apt-get install -y -q php8.0-cli
+            no-upload: 'true'
+            debug: 'false'
+            phpts: nts
+
+          # apcu mixes php pcre apis with pure pcre2 apis
+          # Test with a glibc image that has PHP compiled WITHOUT bundled pcre
+          - ext-name: apcu
+            repository: krakjoe/apcu
+            ref: v5.1.28
+            container-packages: ''
+            variant: 8.5-release-zts
+            image: ghcr.io/cataphract/php-minimal:8.5-release-zts
+            glibc-image: php:8.5-zts
+            debug: 'false'
+            phpts: ts
+
+    steps:
+      - name: Install tools
+        run: apk add --no-cache gcompat git zip docker-cli patchelf
+
+      - name: Install Alpine packages
+        if: matrix.container-packages != ''
+        run: apk add --no-cache ${{ matrix.container-packages }}
+
+      - name: Checkout pie-ext-binary-builder (the action)
+        uses: actions/checkout@v6
+
+      - name: Checkout ${{ matrix.ext-name }}
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.ref }}
+          path: ext
+
+      - name: Run container pre-build script
+        if: matrix.container-pre-build-script != ''
+        run: sh ${{ matrix.container-pre-build-script }}
+
+      - name: Build extension via action (includes patchelf)
+        uses: ./
+        env:
+          LDFLAGS: ${{ matrix.ldflags || '' }}
+        with:
+          release-tag: ${{ matrix.no-upload != 'true' && env.RELEASE_TAG || '' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          build-path: ext
+          libc-target: anylibc
+          configure-flags: ${{ matrix.configure-flags || '' }}
+
+      - name: Test in musl
+        working-directory: ext
+        run: |
+          if [ -n "${{ matrix.musl-pre-test-cmd }}" ]; then eval "${{ matrix.musl-pre-test-cmd }}"; fi
+          EXTRA_EXT="${{ matrix.extra-extension }}"
+          php ${{ matrix.test-runner || 'run-tests.php' }} \
+            -n \
+            ${EXTRA_EXT:+-d extension=$(realpath "$EXTRA_EXT")} \
+            -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=$(realpath modules/${{ matrix.ext-name }}.so) \
+            --show-diff -q ${{ matrix.test-dir || 'tests/' }}
+
+      - name: Test on glibc
+        run: |
+          APT_PKGS="${{ matrix.glibc-apt-packages }}"
+          PRE_CMD="${{ matrix.glibc-pre-test-cmd }}"
+          EXTRA_EXT="${{ matrix.extra-extension }}"
+          docker run --rm \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -v "${{ github.workspace }}/ext:/ext" \
+            -w /ext \
+            "${{ matrix.glibc-image }}" \
+            sh -c "${APT_PKGS:+apt update && apt-get install -y ${APT_PKGS} && }${PRE_CMD:+${PRE_CMD} && }php ${{ matrix.test-runner || 'run-tests.php' }} \
+              -n ${EXTRA_EXT:+-d extension=/ext/${EXTRA_EXT}} \
+              -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=/ext/modules/${{ matrix.ext-name }}.so \
+              --show-diff -q ${{ matrix.test-dir || 'tests/' }}"
+
+  delete-test-release:
+    runs-on: ubuntu-latest
+    needs: [test-extension]
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Delete test release
+        run: |
+          if gh release view "${{ env.RELEASE_TAG }}" > /dev/null 2>&1; then
+            gh release delete "${{ env.RELEASE_TAG }}" --yes --cleanup-tag
+          else
+            echo "Release ${{ env.RELEASE_TAG }} does not exist, skipping deletion."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

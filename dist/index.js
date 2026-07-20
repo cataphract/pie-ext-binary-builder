@@ -36347,30 +36347,29 @@ const external_url_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.met
 async function determineExtensionNameFromComposerJson() {
     info("Detecting extension name from composer.json...");
 
-    if (!external_fs_namespaceObject.existsSync("composer.json")) {
+    const buildPath = getInput("build-path") || ".";
+    const composerJson = external_path_namespaceObject.join(buildPath, "composer.json");
+
+    if (!external_fs_namespaceObject.existsSync(composerJson)) {
         throw new Error("composer.json not found. This does not appear to be a PIE package.");
     }
 
-    const type = (await getExecOutput("jq", ["-r", ".type", "composer.json"], {
-        ignoreReturnCode: true
-    })).stdout.trim();
+    const composer = JSON.parse(external_fs_namespaceObject.readFileSync(composerJson, "utf8"));
+
+    const type = composer.type || "";
     if (type !== "php-ext" && type !== "php-ext-zend") {
         throw new Error(`composer.json type must be "php-ext" or "php-ext-zend", but "${type}" was found.`);
     }
 
-    let extName = (await getExecOutput("jq", ["-r", '."php-ext"."extension-name"', "composer.json"], {
-        ignoreReturnCode: true
-    })).stdout.trim();
+    let extName = composer["php-ext"]?.["extension-name"] || "";
 
     // If extension-name is not defined, fall back according to package name (without vendor prefix)
     // https://github.com/php/pie/blob/f9cb8d3034697dc5b4054614a25b0860c861e496/src/ExtensionName.php#L58
-    if (extName === "null" || extName === "") {
+    if (!extName) {
         info(".php-ext.extension-name not found in composer.json, falling back to package name...");
-        const packageName = (await getExecOutput("jq", ["-r", ".name", "composer.json"], {
-            ignoreReturnCode: true
-        })).stdout.trim();
+        const packageName = composer.name || "";
 
-        if (packageName === "null" || packageName === "") {
+        if (!packageName) {
             throw new Error("Could not determine extension name: both .\"php-ext\".\"extension-name\" and .name are missing in composer.json");
         }
 
@@ -36390,15 +36389,37 @@ async function determineExtensionNameFromComposerJson() {
     return extName;
 }
 
-async function buildExtension() {
-    info("Building the extension...");
+async function buildExtension({ extSoFile } = {}) {
+    const libcTarget = getInput("libc-target");
     const configureFlags = getInput("configure-flags").split(' ');
     const buildPath = getInput("build-path") || ".";
-    const opts = buildPath !== "." ? { cwd: buildPath } : {};
 
+    info("Building the extension...");
+    const opts = buildPath !== "." ? { cwd: buildPath } : {};
     await exec_exec("phpize", [], opts);
     await exec_exec("./configure", configureFlags, opts);
     await exec_exec("make", [], opts);
+
+    if (libcTarget === 'anylibc') {
+        const soRelPath = buildPath !== '.' ? external_path_namespaceObject.join(buildPath, 'modules', extSoFile) : external_path_namespaceObject.join('modules', extSoFile);
+        const { stdout } = await getExecOutput('patchelf', ['--print-needed', soRelPath]);
+        const needed = stdout.trim().split('\n').filter(Boolean);
+
+        // Remove musl libc dependency if present
+        const muslArchMap = { 'x64': 'x86_64', 'arm64': 'aarch64' };
+        const muslArch = muslArchMap[process.arch] || process.arch;
+        const muslLib = `libc.musl-${muslArch}.so.1`;
+        if (needed.includes(muslLib)) {
+            info(`Removing musl libc dependency: ${muslLib}`);
+            await exec_exec('patchelf', ['--remove-needed', muslLib, soRelPath]);
+        }
+
+        // Remove glibc libc dependency if present
+        if (needed.includes('libc.so.6')) {
+            info('Removing glibc libc dependency: libc.so.6');
+            await exec_exec('patchelf', ['--remove-needed', 'libc.so.6', soRelPath]);
+        }
+    }
 }
 
 async function determinePhpVersionFromPhpConfig() {
@@ -36441,6 +36462,12 @@ async function determineOperatingSystem() {
 
 async function determineLibcFlavour() {
     info("Detecting libc flavour...");
+
+    const libcTarget = getInput("libc-target");
+    if (libcTarget === 'anylibc') {
+        return "anylibc";
+    }
+
     if (process.platform === "darwin") {
         return "bsdlibc";
     }
@@ -36495,12 +36522,18 @@ async function uploadReleaseAsset(releaseTag, packageFilename) {
     const { owner, repo } = github_context.repo;
 
     info(`Searching for release with tag: ${releaseTag} (including drafts)...`);
-    const { data: releases } = await octokit.rest.repos.listReleases({
-        owner,
-        repo,
-    });
 
-    const release = releases.find(r => r.tag_name === releaseTag);
+    let release = null;
+    for (let attempt = 1; attempt <= 10; attempt++) {
+        const { data: releases } = await octokit.rest.repos.listReleases({ owner, repo });
+        release = releases.find(r => r.tag_name === releaseTag);
+        if (release) break;
+        if (attempt < 10) {
+            const delay = action._retryDelay;
+            info(`Release not found yet (attempt ${attempt}/10), retrying in ${delay / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
     if (!release) {
         throw new Error(`No release found for tag: ${releaseTag}`);
     }
@@ -36538,7 +36571,12 @@ async function extensionDetails() {
 async function main() {
     const { releaseTag, extSoFile, extPackageName } = await action.extensionDetails();
 
-    await action.buildExtension();
+    await action.buildExtension({ extSoFile });
+
+    if (!releaseTag) {
+        info("No release-tag provided, skipping zip and upload.");
+        return;
+    }
 
     const buildPath = getInput("build-path") || ".";
     const modulesDir = external_path_namespaceObject.join(buildPath, "modules");
@@ -36552,6 +36590,7 @@ async function main() {
 }
 
 const action = {
+    _retryDelay: 15000,
     determineExtensionNameFromComposerJson,
     buildExtension,
     determinePhpVersionFromPhpConfig,

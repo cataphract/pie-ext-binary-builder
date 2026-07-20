@@ -10,11 +10,20 @@ inputs:
     required: false
     default: '.'
   release-tag:
-    description: 'The tag to use for the release'
-    required: true
+    description: 'The tag to use for the release. If omitted, zip and upload steps are skipped.'
+    required: false
+    default: ''
   github-token:
     description: 'The GitHub token to use for uploading assets'
-    required: true
+    required: false
+    default: ''
+  libc-target:
+    description: >
+      Target libc for the build. "host" (default) uses whatever libc is on the
+      runner. On Linux, "anylibc" can also be specified to indicate that the
+      resulting binary is compatible with both glibc and musl.
+    required: false
+    default: 'host'
 outputs:
   package-path:
     description: 'Path to the generated .zip package'
