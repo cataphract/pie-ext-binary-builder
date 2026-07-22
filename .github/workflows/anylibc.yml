@@ -207,6 +207,32 @@ jobs:
             debug: 'false'
             phpts: ts
 
+          - ext-name: swoole
+            repository: swoole/swoole-src
+            ref: v6.2.2
+            # Prepare static OpenSSL/Brotli libraries and the ext-sockets header.
+            container-pre-build-script: .github/workflows/scripts/swoole-static.sh
+            configure-flags: --enable-brotli --enable-sockets
+            ldflags: '-L/usr/local/static-link'
+            variant: 8.2-release
+            image: ghcr.io/cataphract/php-minimal:8.2-release
+            musl-test-image: php:8.2-cli-alpine
+            glibc-image: php:8.2-cli-bullseye
+            # Install Composer dependencies used by Swoole's PHPT support library.
+            test-prepare-script: .github/workflows/scripts/swoole-test-prepare.sh
+            # Build sockets and pcntl in the test image, then enable Swoole.
+            test-runtime-setup-script: .github/workflows/scripts/swoole-test-runtime.sh
+            # Start the remote object server required by the selected PHPTs.
+            test-init-script: .github/workflows/scripts/swoole-test-init.php
+            test-extension-mode: ini
+            test-runner: tests/run-tests
+            test-runner-php-args: -d memory_limit=-1
+            test-php-args: -d memory_limit=1024M
+            test-args: --offline --set-timeout 30
+            test-list: .github/workflows/test-lists/swoole-6.2.2.txt
+            test-phpt: '1'
+            test-home: /tmp/swoole-test-home
+
     steps:
       - name: Install tools
         run: apk add --no-cache gcompat git zip docker-cli patchelf
@@ -240,31 +266,51 @@ jobs:
           libc-target: anylibc
           configure-flags: ${{ matrix.configure-flags || '' }}
 
+      - name: Prepare test fixtures
+        if: matrix.test-prepare-script != ''
+        run: sh "${{ matrix.test-prepare-script }}"
+
       - name: Test in musl
-        working-directory: ext
-        run: |
-          if [ -n "${{ matrix.musl-pre-test-cmd }}" ]; then eval "${{ matrix.musl-pre-test-cmd }}"; fi
-          EXTRA_EXT="${{ matrix.extra-extension }}"
-          php ${{ matrix.test-runner || 'run-tests.php' }} \
-            -n \
-            ${EXTRA_EXT:+-d extension=$(realpath "$EXTRA_EXT")} \
-            -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=$(realpath modules/${{ matrix.ext-name }}.so) \
-            --show-diff -q ${{ matrix.test-dir || 'tests/' }}
+        env:
+          TEST_IMAGE: ${{ matrix.musl-test-image || matrix.image }}
+          TEST_PACKAGES: ${{ matrix.musl-test-packages || matrix.container-packages }}
+          TEST_PRE_COMMAND: ${{ matrix.musl-pre-test-cmd }}
+          TEST_EXTENSION_NAME: ${{ matrix.ext-name }}
+          TEST_EXTRA_EXTENSION: ${{ matrix.extra-extension }}
+          TEST_ZEND_EXTENSION: ${{ matrix.zend_extension }}
+          TEST_EXTENSION_MODE: ${{ matrix.test-extension-mode || 'argument' }}
+          TEST_RUNTIME_SETUP_SCRIPT: ${{ matrix.test-runtime-setup-script }}
+          TEST_INIT_SCRIPT: ${{ matrix.test-init-script }}
+          TEST_RUNNER: ${{ matrix.test-runner || 'run-tests.php' }}
+          TEST_RUNNER_PHP_ARGS: ${{ matrix.test-runner-php-args }}
+          TEST_PHP_ARGS: ${{ matrix.test-php-args }}
+          TEST_ARGS: ${{ matrix.test-args }}
+          TEST_PATH: ${{ matrix.test-dir || 'tests/' }}
+          TEST_LIST: ${{ matrix.test-list }}
+          TEST_PHPT: ${{ matrix.test-phpt }}
+          TEST_HOME: ${{ matrix.test-home }}
+        run: sh .github/workflows/scripts/run-extension-tests.sh musl
 
       - name: Test on glibc
-        run: |
-          APT_PKGS="${{ matrix.glibc-apt-packages }}"
-          PRE_CMD="${{ matrix.glibc-pre-test-cmd }}"
-          EXTRA_EXT="${{ matrix.extra-extension }}"
-          docker run --rm \
-            -e DEBIAN_FRONTEND=noninteractive \
-            -v "${{ github.workspace }}/ext:/ext" \
-            -w /ext \
-            "${{ matrix.glibc-image }}" \
-            sh -c "${APT_PKGS:+apt update && apt-get install -y ${APT_PKGS} && }${PRE_CMD:+${PRE_CMD} && }php ${{ matrix.test-runner || 'run-tests.php' }} \
-              -n ${EXTRA_EXT:+-d extension=/ext/${EXTRA_EXT}} \
-              -d ${{ matrix.zend_extension == 'true' && 'zend_extension' || 'extension' }}=/ext/modules/${{ matrix.ext-name }}.so \
-              --show-diff -q ${{ matrix.test-dir || 'tests/' }}"
+        env:
+          TEST_IMAGE: ${{ matrix.glibc-image }}
+          TEST_PACKAGES: ${{ matrix.glibc-apt-packages }}
+          TEST_PRE_COMMAND: ${{ matrix.glibc-pre-test-cmd }}
+          TEST_EXTENSION_NAME: ${{ matrix.ext-name }}
+          TEST_EXTRA_EXTENSION: ${{ matrix.extra-extension }}
+          TEST_ZEND_EXTENSION: ${{ matrix.zend_extension }}
+          TEST_EXTENSION_MODE: ${{ matrix.test-extension-mode || 'argument' }}
+          TEST_RUNTIME_SETUP_SCRIPT: ${{ matrix.test-runtime-setup-script }}
+          TEST_INIT_SCRIPT: ${{ matrix.test-init-script }}
+          TEST_RUNNER: ${{ matrix.test-runner || 'run-tests.php' }}
+          TEST_RUNNER_PHP_ARGS: ${{ matrix.test-runner-php-args }}
+          TEST_PHP_ARGS: ${{ matrix.test-php-args }}
+          TEST_ARGS: ${{ matrix.test-args }}
+          TEST_PATH: ${{ matrix.test-dir || 'tests/' }}
+          TEST_LIST: ${{ matrix.test-list }}
+          TEST_PHPT: ${{ matrix.test-phpt }}
+          TEST_HOME: ${{ matrix.test-home }}
+        run: sh .github/workflows/scripts/run-extension-tests.sh glibc
 
   delete-test-release:
     runs-on: ubuntu-latest
